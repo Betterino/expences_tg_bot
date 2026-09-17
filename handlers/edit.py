@@ -152,7 +152,7 @@ async def input_category_name(message: Message,state: FSMContext, db: Database, 
     kind = data["kind"]
     if mode == "create":
         confirm_text = "create_confirm"
-        sort_order = await db.get_maximum_sort_order(budget_id) + 10
+        sort_order = await db.get_maximum_sort_order(budget_id,kind) + 10
         await state.update_data(sort_order=sort_order)
 
     if await db.check_category_name(budget_id,category_name) is not None:

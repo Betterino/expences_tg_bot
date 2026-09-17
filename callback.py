@@ -1,5 +1,6 @@
 from aiogram.filters.callback_data import CallbackData
 
+
 class OnboardCB(CallbackData, prefix="onb"):
     action: str          # create | join
 
@@ -36,3 +37,7 @@ class NavCB(CallbackData,prefix="nav"):
     to: str  # menu | stats | edit | add | range | code
             # edit_
     kind: str = "expense"
+
+class HistoryPageCB(CallbackData, prefix="hpg"):
+    page: int
+    kind: str | None = None  # None = комбинированная лента (расходы + доходы)

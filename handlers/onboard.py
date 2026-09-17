@@ -35,9 +35,10 @@ async def join_budget(callback: CallbackQuery, state: FSMContext):
 async def join_code_budget(message: Message, db: Database,state: FSMContext,user):
     budget_id = await db.check_invite_code(message.text.strip())
     if budget_id is None:
-        await message.edit_text("Такого бюджета нет")
+        await message.answer("Такого бюджета нет")
         return
     await db.add_to_budget(user["user_id"],budget_id)
+    await state.clear()
     await message.answer(f"Успешно присоединены!\nМеню",reply_markup=main_menu())
 
 @router.callback_query(NavCB.filter(F.to == "code"))

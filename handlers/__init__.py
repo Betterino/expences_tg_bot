@@ -1,4 +1,4 @@
-from . import common, expenses, stats, edit, onboard, settings
+from . import common, expenses, stats, edit, onboard, settings, history
 
 routers = (
     common.router,
@@ -6,6 +6,6 @@ routers = (
     expenses.router,
     onboard.router,
     settings.router,
-    edit.router
-    
+    edit.router,
+    history.router,
 )

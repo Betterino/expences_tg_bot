@@ -1,7 +1,7 @@
 from calendar import monthrange
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
-PER_PAGE = 6
+from constants import PER_PAGE
 def parse_amount(text: str) -> int|None:
     try:
         text = text.replace(".",",")
@@ -21,6 +21,9 @@ def parse_amount(text: str) -> int|None:
     except(ValueError, AttributeError):
         return None
     
+def format_tx_date(date_str: str) -> str:
+    return date.fromisoformat(date_str).strftime("%d.%m.%Y")
+
 def format_money(value: int) -> str:
     rubles = value // 100
     kopeiki = value % 100

@@ -7,7 +7,6 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from texts import START_TEXT,MENU,CANCEL
-PER_PAGE = 6
 router = Router(name="common")
 
 

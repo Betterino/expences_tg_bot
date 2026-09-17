@@ -27,7 +27,7 @@ async def render_stats_screen(year,month,db: Database, budget_id, callback: Call
 
 async def render_categories_screen(callback: CallbackQuery, db:Database, budget_id: int, purpose: str, page: int, kind: str = "expense"):
     if purpose == "dearchive":
-        categories = await db.list_archived_categories(budget_id)
+        categories = await db.list_archived_categories(budget_id,kind)
     elif purpose == "delete":
         categories = await db.list_all_categories(budget_id,kind)
     else:

@@ -1,6 +1,6 @@
 from datetime import datetime,timedelta
 from callback import NavCB, CategoryCB, AddCB
-from keyboards import  main_menu,  categories_kb,date_expense_kb,cancel_kb
+from keyboards import  main_menu,  categories_kb,date_expense_kb,cancel_kb,added_confirm_kb
 from db import Database
 from utils import parse_amount, format_money,  calc_page, today, parse_date
 from aiogram import  F,Router
@@ -9,10 +9,9 @@ from .screens import render_categories_screen
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from zoneinfo import ZoneInfo
-from constants import PURPOSE_DICT_SCREENS
-from texts import CHOOSE_DATE_ADD, AMOUNT_PROMPT, INPUT_DATE_ADD,BAD_PAGE,BAD_DATE,ADDED,BAD_AMOUNT
+from constants import PURPOSE_DICT_SCREENS, PER_PAGE
+from texts import CHOOSE_DATE_ADD, AMOUNT_PROMPT, INPUT_DATE_ADD,BAD_PAGE,BAD_DATE,ADDED,BAD_AMOUNT,MENU
 
-PER_PAGE = 6
 router = Router(name="expenses")
 
 class AddExpense(StatesGroup):
@@ -82,9 +81,11 @@ async def amount_entered(message: Message, state: FSMContext, db: Database, budg
     kind = data.get("kind", "expense")
     await db.add_expense(budget_id, message.from_user.id, data["category_id"],
                      amount, my_date.isoformat(), kind)
+    mode, my_date_kept = data["mode"], data.get("my_date")
     await state.clear()
-    ### Вызов человека внести еще -> перенаправить обратно в категории
-    await message.answer(ADDED.format(amount=format_money(amount)), reply_markup=main_menu())
+    ### сохраняем дату/режим, чтобы следующая трата на эту же дату не спрашивала дату заново
+    await state.update_data(mode=mode, my_date=my_date_kept, kind=kind)
+    await message.answer(ADDED.format(amount=format_money(amount)), reply_markup=added_confirm_kb(kind))
 
 ### Сообщение при вводе трат, после выбора категории
 @router.callback_query(CategoryCB.filter(F.purpose.in_({"expense", "income"})))
@@ -94,4 +95,13 @@ async def category_chosen(callback: CallbackQuery, callback_data: CategoryCB, st
     text = AMOUNT_PROMPT[callback_data.purpose]
     await callback.message.edit_text(text)
     await callback.answer()
+
+### "Добавить ещё на эту дату" -> сразу к выбору категории, минуя выбор даты
+@router.callback_query(NavCB.filter(F.to == "add_again"))
+async def add_again(callback: CallbackQuery, state: FSMContext, db: Database, callback_data: NavCB, budget_id):
+    data = await state.get_data()
+    if "mode" not in data:
+        await callback.message.edit_text(text=MENU,reply_markup=main_menu())
+        return
+    await render_categories_screen(callback,db,budget_id,callback_data.kind,1,callback_data.kind)
 

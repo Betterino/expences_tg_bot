@@ -1,6 +1,7 @@
 from datetime import datetime
 from callback import  TzCB,NavCB
 from keyboards import  cancel_kb,timezone_kb,settings_kb
+import html
 
 from aiogram import  F,Router
 
@@ -11,17 +12,18 @@ from zoneinfo import ZoneInfo
 
 from db import Database
 
+from texts import NICKNAME_PROMPT, NICKNAME_EMPTY, NICKNAME_SAVED
 
 from aiogram.types import Message, CallbackQuery
 
 
 
 
-PER_PAGE = 6
 router = Router(name="settings")
 
 class Settings(StatesGroup):
     waiting_timezone = State()
+    waiting_nickname = State()
 
 @router.callback_query(NavCB.filter(F.to == "set"))
 async def settings(callback: CallbackQuery, db: Database, state: FSMContext):
@@ -72,3 +74,25 @@ async def tz_entered(message: Message, state: FSMContext, db: Database, user):
     await db.set_timezone(user["user_id"], zone)
     await state.clear()
     await message.answer(f"Готово. Сейчас у тебя {now}")
+
+
+@router.callback_query(NavCB.filter(F.to == "nickname"))
+async def nickname_prompt(callback: CallbackQuery, state: FSMContext, user):
+    await state.set_state(Settings.waiting_nickname)
+    current = user["nickname"] or "не задан"
+    await callback.message.edit_text(
+        NICKNAME_PROMPT.format(current=current),
+        reply_markup=cancel_kb("set"),
+    )
+    await callback.answer()
+
+
+@router.message(Settings.waiting_nickname)
+async def nickname_entered(message: Message, state: FSMContext, db: Database, user):
+    nickname = html.escape((message.text or "").strip())[:20]
+    if not nickname:
+        await message.answer(NICKNAME_EMPTY)
+        return
+    await db.set_nickname(user["user_id"], nickname)
+    await state.clear()
+    await message.answer(NICKNAME_SAVED.format(nickname=nickname))

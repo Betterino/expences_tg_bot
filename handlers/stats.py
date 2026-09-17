@@ -55,9 +55,11 @@ async def input_year(message: Message,state:FSMContext, db: Database,budget_id):
         return
     await state.clear()
     start, end = stats_bounds(year,1,year,12)
-    total = await db.stats_total(budget_id, start, end)
+    total_e = await db.stats_total(budget_id, start, end,"expense")
     rows = await db.expense_by_category(budget_id, start, end)
-    text = create_stats_text(start,end,total,rows)
+    total_i = await db.stats_total(budget_id, start, end,"income")
+    income = await db.income_by_category(budget_id,start,end)
+    text = create_stats_text(start,end,total_e,rows,income,total_i)
     await message.answer(text,reply_markup=special_stats_kb(),parse_mode="HTML")
 
 @router.callback_query(MonthCB.filter())

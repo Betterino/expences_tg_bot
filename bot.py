@@ -40,6 +40,7 @@ class ContextMiddleware(BaseMiddleware):
         data["user"] = user
         data["budget_id"] = user["current_budget"]
         data["tz"] = user["timezone"]
+        data["nickname"] = user["nickname"]
         if data["budget_id"] is not None:
             data["budget_type"] = await self.db.get_budget_type(data["budget_id"])
         else:

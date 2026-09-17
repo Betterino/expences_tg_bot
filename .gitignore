@@ -4,3 +4,7 @@ env/
 data/
 __pycache__/
 .idea
+CLAUDE.local.md
+.claude/
+.agents/
+skills-lock.json

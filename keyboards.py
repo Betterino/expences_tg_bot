@@ -1,7 +1,7 @@
 
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardButton
-from callback import OnboardCB, CategoryCB,CatPageCB,NavCB,MonthCB,RangeCB,StatsCB,AddCB, TzCB
+from callback import OnboardCB, CategoryCB,CatPageCB,NavCB,MonthCB,RangeCB,StatsCB,AddCB, TzCB, HistoryPageCB
 from utils import shift_month
 from constants import MONTHS_LIST, TIMEZONES
 
@@ -121,10 +121,32 @@ def main_menu():
     builder.button(text="Добавить Трату",callback_data=NavCB(to="expense"))
     builder.button(text="Добавить Доход",callback_data=NavCB(to="income"))
     builder.button(text="Статистика",callback_data=NavCB(to="stats"))
+    builder.button(text="История",callback_data=NavCB(to="history"))
     builder.button(text="Редактировать Траты",callback_data=NavCB(to="edit"))
     builder.button(text="Редактировать Доходы", callback_data=NavCB(to="edit", kind="income"))
     builder.button(text="Настройки",callback_data=NavCB(to="set"))
     builder.button(text="Код-приглашение",callback_data=NavCB(to="code"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+def history_kb(page: int, max_page: int, kind: str | None = None):
+    builder = InlineKeyboardBuilder()
+    prev_btn = InlineKeyboardButton(text="<-",callback_data=HistoryPageCB(page=page-1,kind=kind).pack())
+    next_btn = InlineKeyboardButton(text="->",callback_data=HistoryPageCB(page=page+1,kind=kind).pack())
+    if max_page > 1:
+        if page == 1:
+            builder.row(next_btn)
+        elif page == max_page:
+            builder.row(prev_btn)
+        else:
+            builder.row(prev_btn,next_btn)
+    builder.row(InlineKeyboardButton(text="Меню",callback_data=NavCB(to="menu").pack()))
+    return builder.as_markup()
+
+def added_confirm_kb(kind="expense"):
+    builder = InlineKeyboardBuilder()
+    builder.button(text="➕ Добавить ещё на эту дату",callback_data=NavCB(to="add_again",kind=kind))
+    builder.button(text="Меню",callback_data=NavCB(to="menu"))
     builder.adjust(1)
     return builder.as_markup()
 
@@ -136,6 +158,7 @@ def to_menu():
 def settings_kb():
     builder = InlineKeyboardBuilder()
     builder.button(text="Таймзона",callback_data=NavCB(to="timez"))
+    builder.button(text="Никнейм",callback_data=NavCB(to="nickname"))
     builder.button(text="Меню",callback_data=NavCB(to="menu"))
     return builder.as_markup()
 

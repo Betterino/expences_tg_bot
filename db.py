@@ -1,6 +1,11 @@
 import aiosqlite
 from pathlib import Path
 import secrets
+import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
+
 SCHEMA = """
 
 CREATE TABLE IF NOT EXISTS budgets(
@@ -10,7 +15,7 @@ type TEXT NOT NULL DEFAULT 'fixed',
 invite_code TEXT UNIQUE );
 
 CREATE TABLE IF NOT EXISTS users(
-user_id INTEGER PRIMARY KEY, 
+user_id INTEGER PRIMARY KEY,
 current_budget INTEGER DEFAULT NULL REFERENCES budgets(budget_id));
 
 CREATE TABLE IF NOT EXISTS categories(
@@ -61,6 +66,8 @@ MIGRATIONS = [
         ('Подарки', 30, 'income'),
         ('Прочие доходы', 40, 'income');
     """,
+    # версия 3
+    "ALTER TABLE users ADD COLUMN nickname TEXT NOT NULL DEFAULT '';",
 ]
 
 
@@ -317,6 +324,39 @@ class Database:
                     "UPDATE users SET timezone = ? WHERE user_id = ?",(zone,user_id,),)
         await self.conn.commit()
         return cursor.lastrowid
+
+    async def set_nickname(self,user_id, nickname):
+        cursor = await self.conn.execute(
+                    "UPDATE users SET nickname = ? WHERE user_id = ?",(nickname,user_id,),)
+        await self.conn.commit()
+        return cursor.lastrowid
+
+    async def list_recent_transactions(self, budget_id, limit, offset, kind=None):
+        query = """SELECT e.expense_id, e.date, e.amount, e.kind, e.added_by,
+                          COALESCE(c.name, 'Без категории') AS category_name,
+                          COALESCE(u.nickname, '') AS nickname
+                   FROM expenses e
+                   LEFT JOIN categories c ON c.category_id = e.category_id
+                   LEFT JOIN users u ON u.user_id = e.added_by
+                   WHERE e.budget_id = ?"""
+        params = [budget_id]
+        if kind is not None:
+            query += " AND e.kind = ?"
+            params.append(kind)
+        query += " ORDER BY e.expense_id DESC LIMIT ? OFFSET ?"
+        params += [limit, offset]
+        async with self.conn.execute(query, params) as cursor:
+            return await cursor.fetchall()
+
+    async def count_transactions(self, budget_id, kind=None):
+        query = "SELECT COUNT(*) AS c FROM expenses WHERE budget_id = ?"
+        params = [budget_id]
+        if kind is not None:
+            query += " AND kind = ?"
+            params.append(kind)
+        async with self.conn.execute(query, params) as cursor:
+            row = await cursor.fetchone()
+        return row["c"] if row else 0
 
 
 import shutil
