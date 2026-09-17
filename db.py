@@ -85,8 +85,15 @@ class Database:
         await self.conn.execute("PRAGMA foreign_keys = ON")
         await self.conn.execute("PRAGMA journal_mode = WAL")
         await self.conn.executescript(SCHEMA)
-        await self._migrate()    
+        await self._migrate()
         await self.conn.commit()
+
+    async def __aenter__(self):
+        await self.connect()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self.close()
 
     @property
     def conn(self) -> aiosqlite.Connection:

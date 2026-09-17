@@ -6,6 +6,6 @@ routers = (
     expenses.router,
     onboard.router,
     settings.router,
-    edit.router,
     history.router,
+    edit.router,  # last: has an unconditional callback_query catch-all that would swallow later routers' events
 )
