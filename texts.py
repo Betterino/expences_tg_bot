@@ -46,6 +46,7 @@ class Buttons:
     NICKNAME = "Никнейм"
     OTHER_CITY = "Другой город"
     BACK = "Назад"
+    SANDBOX = "🧪 Тест"  # sandbox
 
 
 class Screens:

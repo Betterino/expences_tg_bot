@@ -162,6 +162,7 @@ def settings_kb():
     builder = InlineKeyboardBuilder()
     builder.button(text=Buttons.TIMEZONE,callback_data=NavCB(to="timez"))
     builder.button(text=Buttons.NICKNAME,callback_data=NavCB(to="nickname"))
+    builder.button(text=Buttons.SANDBOX,callback_data=NavCB(to="sandbox"))  # sandbox
     builder.button(text=Buttons.MENU,callback_data=NavCB(to="menu"))
     builder.adjust(2)
     return builder.as_markup()
