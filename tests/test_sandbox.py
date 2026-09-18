@@ -6,12 +6,14 @@ exists to be iterated on.
 """
 from html.parser import HTMLParser
 
+from aiogram.types import InputRichMessage
+
 import handlers
 from callback import NavCB
 from keyboards import settings_kb
 from sandbox.callback import SandboxCB
 from sandbox.fixtures import FIXTURES
-from sandbox.handlers import MESSAGE_LIMIT, send_copy, show_variant
+from sandbox.handlers import MESSAGE_LIMIT, RICH_LIMIT, send_copy, show_variant
 from sandbox.handlers import router as sandbox_router
 from sandbox.keyboard import SOURCES, next_source, sandbox_kb
 from sandbox.variants import VARIANTS, get, render
@@ -59,27 +61,141 @@ def _all_renders():
             yield v, fixture_name, render(v.key, data)
 
 
+def _html_renders():
+    for v, fixture_name, body in _all_renders():
+        if isinstance(body, str):
+            yield v, fixture_name, body
+
+
+def _rich_renders():
+    for v, fixture_name, body in _all_renders():
+        if isinstance(body, InputRichMessage):
+            yield v, fixture_name, body
+
+
+def _rich_blocks(body: InputRichMessage) -> list:
+    return list(body.blocks or [])
+
+
+def _count_blocks(blocks: list) -> int:
+    """Every block counts once, plus everything nested inside list items/details --
+    that is what the Bot API's 500-block cap actually counts against."""
+    total = 0
+    for block in blocks:
+        total += 1
+        for attr in ("blocks", "items"):
+            nested = getattr(block, attr, None)
+            if nested:
+                for n in nested:
+                    if hasattr(n, "blocks"):  # InputRichBlockListItem
+                        total += _count_blocks(n.blocks)
+                    else:
+                        total += _count_blocks([n])
+    return total
+
+
+def _text_of(obj) -> str:
+    """Flatten a RichTextUnion (str, or a list mixing str/RichTextBold/...) to plain text."""
+    if isinstance(obj, str):
+        return obj
+    if isinstance(obj, list):
+        return "".join(_text_of(x) for x in obj)
+    text = getattr(obj, "text", None)
+    return _text_of(text) if text is not None else ""
+
+
+def _walk_text(blocks: list):
+    """Yield every literal text field found anywhere in a rich block tree."""
+    for block in blocks:
+        text = getattr(block, "text", None)
+        if text is not None:
+            yield _text_of(text)
+        caption = getattr(block, "caption", None)
+        if caption is not None:
+            yield _text_of(caption)
+        summary = getattr(block, "summary", None)
+        if summary is not None:
+            yield _text_of(summary)
+        cells = getattr(block, "cells", None)
+        if cells is not None:
+            for row in cells:
+                yield from _walk_text(row)
+        items = getattr(block, "items", None)
+        if items is not None:
+            for item in items:
+                yield from _walk_text(item.blocks)
+        nested = getattr(block, "blocks", None)
+        if nested is not None and not hasattr(block, "items"):
+            yield from _walk_text(nested)
+
+
 def test_every_variant_renders_every_fixture() -> None:
     for v, fixture_name, body in _all_renders():
-        assert isinstance(body, str) and body.strip(), f"{v.key} на {fixture_name} вернул пустоту"
+        if isinstance(body, str):
+            assert body.strip(), f"{v.key} на {fixture_name} вернул пустоту"
+        else:
+            assert _rich_blocks(body), f"{v.key} на {fixture_name} вернул пустое rich-сообщение"
 
 
 def test_every_variant_emits_valid_html() -> None:
-    for v, fixture_name, body in _all_renders():
+    for v, fixture_name, body in _html_renders():
         parser = _parse(body)
         assert not parser.stack, f"{v.key} на {fixture_name}: не закрыты {parser.stack}"
 
 
 def test_every_variant_escapes_its_data() -> None:
-    for v, fixture_name, body in _all_renders():
+    for v, fixture_name, body in _html_renders():
         text = "".join(_parse(body).data)
         assert "<" not in text, f"{v.key} на {fixture_name}: неэкранированный < в данных"
         assert "&" not in text, f"{v.key} на {fixture_name}: голый & вместо сущности"
 
 
 def test_every_variant_fits_message_limit() -> None:
-    for v, fixture_name, body in _all_renders():
+    for v, fixture_name, body in _html_renders():
         assert len(body) < MESSAGE_LIMIT, f"{v.key} на {fixture_name}: {len(body)} символов"
+
+
+def test_every_rich_variant_uses_exactly_one_content_field() -> None:
+    for v, fixture_name, body in _rich_renders():
+        used = [f for f in (body.html, body.markdown, body.blocks) if f is not None]
+        assert len(used) == 1, f"{v.key} на {fixture_name}: {len(used)} полей вместо одного"
+
+
+def test_every_rich_variant_respects_block_and_column_limits() -> None:
+    for v, fixture_name, body in _rich_renders():
+        blocks = _rich_blocks(body)
+        assert _count_blocks(blocks) <= 500, f"{v.key} на {fixture_name}: больше 500 блоков"
+        for block in blocks:
+            cells = getattr(block, "cells", None)
+            if cells is not None:
+                for row in cells:
+                    assert len(row) <= 20, f"{v.key} на {fixture_name}: строка таблицы шире 20 колонок"
+
+
+def test_every_rich_table_has_uniform_row_width() -> None:
+    for v, fixture_name, body in _rich_renders():
+        for block in _rich_blocks(body):
+            cells = getattr(block, "cells", None)
+            if cells is not None:
+                widths = {len(row) for row in cells}
+                assert len(widths) == 1, f"{v.key} на {fixture_name}: неровные строки таблицы {widths}"
+
+
+def test_every_rich_variant_fits_rich_limit() -> None:
+    for v, fixture_name, body in _rich_renders():
+        size = sum(len(t) for t in _walk_text(_rich_blocks(body)))
+        assert size <= RICH_LIMIT, f"{v.key} на {fixture_name}: {size} символов"
+
+
+def test_every_rich_variant_unescapes_its_text() -> None:
+    """Regression guard: rich block text is literal RichText, not markup, so a category
+    name stored HTML-escaped (html.escape() at input time) must come back through
+    helpers.visible() before landing in a block -- otherwise "Кафе &amp; бары" renders
+    literally instead of "Кафе & бары"."""
+    for v, fixture_name, body in _rich_renders():
+        for text in _walk_text(_rich_blocks(body)):
+            assert "&amp;" not in text, f"{v.key} на {fixture_name}: неснятый &amp;"
+            assert "&lt;" not in text, f"{v.key} на {fixture_name}: неснятый &lt;"
 
 
 def test_variant_keys_are_unique_and_packable() -> None:
@@ -138,6 +254,18 @@ async def test_fixture_source_never_touches_the_db() -> None:
     callback.message.edit_text.assert_awaited_once()
     callback.answer.assert_awaited_once()
     assert "Рамки" in callback.message.edit_text.await_args.kwargs["text"]
+
+
+async def test_rich_variant_edits_with_rich_message_not_text() -> None:
+    # db=None доказывает это: любое обращение к базе упало бы с AttributeError.
+    callback = FakeCallbackQuery()
+    data = SandboxCB(action="show", key="rtable", source="demo")
+    await show_variant(callback, callback_data=data, db=None, budget_id=None, tz="Europe/Moscow")
+    callback.message.edit_text.assert_awaited_once()
+    kwargs = callback.message.edit_text.await_args.kwargs
+    assert "rich_message" in kwargs, "rich-вариант должен уходить через rich_message"
+    assert "text" not in kwargs, "rich-вариант не должен передавать text"
+    callback.answer.assert_awaited_once()
 
 
 async def test_copy_sends_a_new_message_instead_of_editing() -> None:

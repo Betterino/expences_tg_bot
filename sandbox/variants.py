@@ -9,19 +9,35 @@ Every render function is pure: TableData -> str. No aiogram, no DB, no I/O.
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from aiogram.types import (
+    InputRichBlockDetails,
+    InputRichBlockDivider,
+    InputRichBlockFooter,
+    InputRichBlockList,
+    InputRichBlockListItem,
+    InputRichBlockParagraph,
+    InputRichBlockSectionHeading,
+    InputRichBlockTable,
+    InputRichMessage,
+    RichBlockTableCell,
+)
+
 from sandbox import TableData
-from sandbox.helpers import bar, fit, lpad, money, percent, rpad
+from sandbox.helpers import bar, fit, lpad, money, percent, rpad, visible
 from texts import Categories, Stats
 from utils import create_stats_text, format_tx_date
 
 SEP = " "  # неразрывный пробел как разделитель разрядов: 12 340, а не 12340
 
 
+Body = str | InputRichMessage
+
+
 @dataclass(frozen=True, slots=True)
 class Variant:
     key: str  # короткий ascii-ключ, уезжает в callback data
     label: str  # текст кнопки
-    render: Callable[[TableData], str]
+    render: Callable[[TableData], Body]
 
 
 VARIANTS: list[Variant] = []
@@ -35,7 +51,7 @@ def variant(key: str, label: str):
     mysteriously dead button.
     """
 
-    def decorator(fn: Callable[[TableData], str]) -> Callable[[TableData], str]:
+    def decorator(fn: Callable[[TableData], Body]) -> Callable[[TableData], Body]:
         assert all(v.key != key for v in VARIANTS), f"дубль ключа варианта: {key}"
         VARIANTS.append(Variant(key=key, label=label, render=fn))
         return fn
@@ -53,7 +69,7 @@ def get(key: str) -> Variant:
     return next((v for v in VARIANTS if v.key == key), VARIANTS[0])
 
 
-def render(key: str, data: TableData) -> str:
+def render(key: str, data: TableData) -> Body:
     return get(key).render(data)
 
 
@@ -277,3 +293,89 @@ def render_quote(data: TableData) -> str:
     out.append("</code></blockquote>")
     out.append(f"<b>Итого: {money(data.diff, SEP)}</b> — у вас {verdict(data)}")
     return "\n".join(out)
+
+
+# ------------------------------------------------------------------ 7 rich table
+
+
+def _header_cell(text: str) -> RichBlockTableCell:
+    return RichBlockTableCell(align="left", valign="middle", text=text, is_header=True)
+
+
+def _table_block(rows: list[dict], columns: list[str], total: int, total_label: str) -> InputRichBlockTable:
+    """One expense/income table: name column left-aligned, money columns right-aligned.
+
+    helpers.visible() undoes the html.escape() done at input time (handlers/edit.py:146)
+    -- rich block text is literal RichText, not markup, so re-escaping here would put a
+    literal "&amp;" on screen instead of "&".
+    """
+    header = [_header_cell(columns[0])] + [
+        RichBlockTableCell(align="right", valign="middle", text=c, is_header=True) for c in columns[1:]
+    ]
+    cells = [header]
+    for r in rows:
+        row = [RichBlockTableCell(align="left", valign="middle", text=visible(r["name"]))]
+        row.append(RichBlockTableCell(align="right", valign="middle", text=money(r["total"])))
+        if len(columns) > 2:
+            maximum = money(r["maximum"]) if r["maximum"] else "—"
+            row.append(RichBlockTableCell(align="right", valign="middle", text=maximum))
+        cells.append(row)
+    total_row = [RichBlockTableCell(align="left", valign="middle", text=total_label, is_header=True)]
+    total_row.append(RichBlockTableCell(align="right", valign="middle", text=money(total), is_header=True))
+    if len(columns) > 2:
+        total_row.append(RichBlockTableCell(align="right", valign="middle", text=""))
+    cells.append(total_row)
+    return InputRichBlockTable(cells=cells, is_bordered=True, is_striped=True)
+
+
+@variant("rtable", "7 Rich-таблица")
+def render_rtable(data: TableData) -> InputRichMessage:
+    """The direct answer to what the sandbox is for: a native table block, real cells,
+    per-column alignment via align="left"/"right" -- no <pre>, no padding math, no
+    SEP narrow-space grouping. Requires Bot API 10.1+ (InputRichBlockTable)."""
+    expense_columns = [Categories.NAME_COLUMN, Stats.TOTAL_COLUMN, Categories.MAX_COLUMN]
+    income_columns = [Categories.NAME_COLUMN, Stats.INCOME_COLUMN]
+    blocks: list = [
+        InputRichBlockParagraph(text=f"Статистика · {period(data)}"),
+        _table_block(data.expense, expense_columns, data.total_e, "Всего"),
+        InputRichBlockDivider(),
+        _table_block(data.income, income_columns, data.total_i, "Всего"),
+        InputRichBlockFooter(text=f"Итого: {money(data.diff)} — у вас {verdict(data)}"),
+    ]
+    return InputRichMessage(blocks=blocks)
+
+
+# --------------------------------------------------------------- 8 rich document
+
+
+def _category_list(rows: list[dict]) -> InputRichBlockList:
+    items = []
+    for r in rows:
+        tail = f" из {money(r['maximum'])}" if r["maximum"] else ""
+        text = f"{visible(r['name'])} — {money(r['total'])}{tail}"
+        items.append(InputRichBlockListItem(blocks=[InputRichBlockParagraph(text=text)]))
+    return InputRichBlockList(items=items)
+
+
+@variant("rdoc", "8 Rich-документ")
+def render_rdoc(data: TableData) -> InputRichMessage:
+    """Document-shaped alternative: headings, a divider, per-category lists, and the
+    whole breakdown collapsible in a <details> block -- tests whether a long category
+    list reads better collapsed than truncated (cf. sandbox's "6 Цитата" for the
+    <pre>-inside-<blockquote> equivalent)."""
+    breakdown = [
+        InputRichBlockSectionHeading(text=Stats.TOTAL_COLUMN, size=4),
+        _category_list(data.expense),
+        InputRichBlockParagraph(text=f"Всего: {money(data.total_e)}"),
+        InputRichBlockSectionHeading(text=Stats.INCOME_COLUMN, size=4),
+        _category_list(data.income),
+        InputRichBlockParagraph(text=f"Всего: {money(data.total_i)}"),
+    ]
+    blocks: list = [
+        InputRichBlockSectionHeading(text="Статистика", size=2),
+        InputRichBlockParagraph(text=period(data)),
+        InputRichBlockDivider(),
+        InputRichBlockDetails(summary="Разбивка по категориям", blocks=breakdown, is_open=True),
+        InputRichBlockFooter(text=f"Итого: {money(data.diff)} — у вас {verdict(data)}"),
+    ]
+    return InputRichMessage(blocks=blocks)

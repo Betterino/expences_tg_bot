@@ -19,3 +19,5 @@ class Sandbox:
     }
     NO_BUDGET = "Бюджета нет — показываю образец"
     TOO_LONG = "Не влезло в 4096 символов — вариант обрезан"
+    RICH_HEADER = "🧪 {label} · {source} · {size}/32768"
+    RICH_UNAVAILABLE = "Rich-сообщения недоступны — показываю «Как сейчас»"

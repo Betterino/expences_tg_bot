@@ -13,7 +13,7 @@ callbacks the sandbox does not claim never pay for its ensure_user round-trip.
 """
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, InputRichBlockParagraph, InputRichMessage
 
 from callback import NavCB
 from db import Database
@@ -22,12 +22,39 @@ from sandbox.callback import SandboxCB
 from sandbox.fixtures import FIXTURES
 from sandbox.keyboard import sandbox_kb
 from sandbox.texts import Sandbox as SandboxTexts
-from sandbox.variants import VARIANTS, get, render
+from sandbox.variants import VARIANTS, Body, get, render
 from utils import stats_bounds, today
 
 router = Router(name="sandbox")
 
 MESSAGE_LIMIT = 4096
+RICH_LIMIT = 32768
+
+
+def _rich_text_len(blocks: list) -> int:
+    """Summed length of every literal text found in a rich block tree.
+
+    Walks the handful of fields that can carry text or nested blocks (table cells are
+    a list of lists, list items and details wrap further blocks) instead of assuming
+    a fixed shape, since the tree differs between "rtable" and "rdoc".
+    """
+    total = 0
+
+    def walk(obj) -> None:
+        nonlocal total
+        if isinstance(obj, str):
+            total += len(obj)
+        elif isinstance(obj, list):
+            for item in obj:
+                walk(item)
+        elif hasattr(obj, "model_dump"):
+            for attr in ("text", "blocks", "cells", "items", "caption", "summary"):
+                value = getattr(obj, attr, None)
+                if value is not None:
+                    walk(value)
+
+    walk(blocks)
+    return total
 
 
 async def live_data(db: Database, budget_id: int, tz: str) -> TableData:
@@ -58,31 +85,56 @@ async def resolve(source: str, db, budget_id, tz) -> tuple[TableData, str, str |
     return await live_data(db, budget_id, tz), "live", None
 
 
-def build_screen(key: str, source: str, data: TableData) -> tuple[str, str | None]:
-    """-> (message text, toast). The size counter is the teaching device: you watch
-    «Рамки» cost 850 characters and «Без моноширинного» 1400 for identical data."""
+def build_screen(key: str, source: str, data: TableData) -> tuple[Body, str | None]:
+    """-> (message body, toast). The size counter is the teaching device: you watch
+    «Рамки» cost 850 characters and «Без моноширинного» 1400 for identical data --
+    rich variants get the same treatment against RICH_LIMIT instead of MESSAGE_LIMIT."""
     body = render(key, data)
     toast = None
-    header = SandboxTexts.HEADER.format(
-        label=get(key).label, source=SandboxTexts.SOURCE_LABELS[source], size=len(body)
+    if isinstance(body, str):
+        header = SandboxTexts.HEADER.format(
+            label=get(key).label, source=SandboxTexts.SOURCE_LABELS[source], size=len(body)
+        )
+        if len(header) + len(body) > MESSAGE_LIMIT:
+            body = body[: MESSAGE_LIMIT - len(header) - 1]
+            toast = SandboxTexts.TOO_LONG
+        return header + body, toast
+
+    blocks = list(body.blocks or [])
+    size = _rich_text_len(blocks)
+    header_text = SandboxTexts.RICH_HEADER.format(
+        label=get(key).label, source=SandboxTexts.SOURCE_LABELS[source], size=size
     )
-    if len(header) + len(body) > MESSAGE_LIMIT:
-        body = body[: MESSAGE_LIMIT - len(header) - 1]
+    if size > RICH_LIMIT:
         toast = SandboxTexts.TOO_LONG
-    return header + body, toast
+    return InputRichMessage(blocks=[InputRichBlockParagraph(text=header_text), *blocks]), toast
 
 
 async def show(callback: CallbackQuery, key: str, source: str, db, budget_id, tz) -> None:
     data, source, toast = await resolve(source, db, budget_id, tz)
-    text, size_toast = build_screen(key, source, data)
+    body, size_toast = build_screen(key, source, data)
+    markup = sandbox_kb(key, source)
     try:
-        await callback.message.edit_text(text=text, reply_markup=sandbox_kb(key, source))
+        if isinstance(body, str):
+            await callback.message.edit_text(text=body, reply_markup=markup)
+        else:
+            await callback.message.edit_text(rich_message=body, reply_markup=markup)
     except TelegramBadRequest as error:
         # Telegram rejects an editMessageText whose text AND markup are byte-identical
         # to what is already on screen -- which is exactly what re-tapping the selected
         # variant produces. Unhandled it reaches @dp.error() and shows the user
         # "Что-то сломалось" for a no-op. Swallow *this* 400 only, re-raise every other.
-        if "message is not modified" not in str(error):
+        if "message is not modified" in str(error):
+            pass
+        elif not isinstance(body, str):
+            # aiogram knowing the 10.2 schema does not guarantee the Bot API server or
+            # this chat actually accepts send_rich_message -- fall back to the plain
+            # "Как сейчас" variant rather than letting the error reach @dp.error().
+            fallback_body, _ = build_screen("base", source, data)
+            await callback.message.edit_text(text=fallback_body, reply_markup=sandbox_kb("base", source))
+            await callback.answer(SandboxTexts.RICH_UNAVAILABLE)
+            return
+        else:
             raise
     # Telegram spins the button's loading indicator for ~30s until the callback query is
     # answered, so every path -- including the swallowed one above -- must reach this.
@@ -105,6 +157,9 @@ async def send_copy(callback: CallbackQuery, callback_data: SandboxCB, db: Datab
     variants stack in the chat and can be scrolled side by side on a real phone. That is
     the only honest way to judge whether a wide table wraps."""
     data, source, toast = await resolve(callback_data.source, db, budget_id, tz)
-    text, _ = build_screen(callback_data.key, source, data)
-    await callback.message.answer(text)
+    body, _ = build_screen(callback_data.key, source, data)
+    if isinstance(body, str):
+        await callback.message.answer(body)
+    else:
+        await callback.message.answer_rich(rich_message=body)
     await callback.answer(toast or SandboxTexts.COPIED)
