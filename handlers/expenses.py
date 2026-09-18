@@ -9,8 +9,8 @@ from .screens import render_categories_screen
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from zoneinfo import ZoneInfo
-from constants import PURPOSE_DICT_SCREENS, PER_PAGE
-from texts import CHOOSE_DATE_ADD, AMOUNT_PROMPT, INPUT_DATE_ADD,BAD_PAGE,BAD_DATE,ADDED,BAD_AMOUNT,MENU
+from constants import PER_PAGE
+from texts import Screens, Prompts, Errors, Stats
 
 router = Router(name="expenses")
 
@@ -22,16 +22,15 @@ class AddExpense(StatesGroup):
 @router.callback_query(NavCB.filter(F.to.in_({"expense", "income"})))
 async def start_add(callback: CallbackQuery, state: FSMContext, db: Database,callback_data: NavCB, budget_id,user):
     if budget_id is None:
-        await callback.message.answer("Сначала создай бюджет: /start")
+        await callback.message.answer(Errors.NO_BUDGET)
         return
     now = datetime.now(ZoneInfo(user["timezone"])).strftime("%d/%m %H:%M")
-    await callback.message.edit_text(text=CHOOSE_DATE_ADD.format(now=now),reply_markup=date_expense_kb(callback_data.to))
-    
+    await callback.message.edit_text(text=Prompts.CHOOSE_DATE_ADD.format(now=now),reply_markup=date_expense_kb(callback_data.to))
+
 
 @router.callback_query(AddCB.filter())
 async def start_add(callback: CallbackQuery, state: FSMContext, db: Database, callback_data: AddCB, budget_id):
     await state.update_data(kind=callback_data.kind)
-    print(callback_data.kind)
     match callback_data.mode:
         case "today":
             await state.update_data(mode="today")
@@ -43,15 +42,15 @@ async def start_add(callback: CallbackQuery, state: FSMContext, db: Database, ca
         case "date":
             await state.update_data(mode="date")
             await state.set_state(AddExpense.waiting_date)
-            await callback.message.edit_text(INPUT_DATE_ADD,reply_markup=cancel_kb("menu"))
-    
-    
-    
+            await callback.message.edit_text(Prompts.INPUT_DATE_ADD,reply_markup=cancel_kb("menu"))
+
+
+
 @router.message(AddExpense.waiting_date)
 async def data_entered(message:Message,state:FSMContext,db: Database,budget_id,tz):
     my_date = parse_date(message.text,tz)
     if my_date is None:
-        await message.answer(BAD_DATE)
+        await message.answer(Errors.BAD_DATE)
         return
     await state.update_data(my_date=my_date)
     data = await state.get_data()
@@ -59,18 +58,18 @@ async def data_entered(message:Message,state:FSMContext,db: Database,budget_id,t
     categories = await db.list_active_categories(budget_id,kind)
     max_page = len(categories)// PER_PAGE + (1 if len(categories) % PER_PAGE != 0 else 0)
     categories = calc_page(categories,1)
-    text = PURPOSE_DICT_SCREENS[kind]
-    text += f"Страница {1:2d}/{max_page:2d}"
+    text = Screens.CATEGORY_PICKER[kind]
+    text += Screens.PAGE.format(page=1, max_page=max_page)
     if len(categories) == 0:
-        text = BAD_PAGE
+        text = Errors.BAD_PAGE
     await message.answer(text=text, reply_markup=categories_kb(categories,1,max_page,kind))
-    
+
 ### Сообщение при вводе трат, после ввода значения
 @router.message(AddExpense.waiting_amount)
 async def amount_entered(message: Message, state: FSMContext, db: Database, budget_id,tz):
     amount = parse_amount(message.text)
     if amount is None:
-        await message.answer(BAD_AMOUNT)
+        await message.answer(Errors.BAD_AMOUNT)
         return                                   # состояние НЕ сбрасываем
     data = await state.get_data()
     my_date = today(tz)
@@ -85,14 +84,14 @@ async def amount_entered(message: Message, state: FSMContext, db: Database, budg
     await state.clear()
     ### сохраняем дату/режим, чтобы следующая трата на эту же дату не спрашивала дату заново
     await state.update_data(mode=mode, my_date=my_date_kept, kind=kind)
-    await message.answer(ADDED.format(amount=format_money(amount)), reply_markup=added_confirm_kb(kind))
+    await message.answer(Stats.ADDED.format(amount=format_money(amount)), reply_markup=added_confirm_kb(kind))
 
 ### Сообщение при вводе трат, после выбора категории
 @router.callback_query(CategoryCB.filter(F.purpose.in_({"expense", "income"})))
 async def category_chosen(callback: CallbackQuery, callback_data: CategoryCB, state: FSMContext):
     await state.update_data(category_id=callback_data.id, kind=callback_data.purpose)
     await state.set_state(AddExpense.waiting_amount)
-    text = AMOUNT_PROMPT[callback_data.purpose]
+    text = Prompts.AMOUNT[callback_data.purpose]
     await callback.message.edit_text(text)
     await callback.answer()
 
@@ -101,7 +100,7 @@ async def category_chosen(callback: CallbackQuery, callback_data: CategoryCB, st
 async def add_again(callback: CallbackQuery, state: FSMContext, db: Database, callback_data: NavCB, budget_id):
     data = await state.get_data()
     if "mode" not in data:
-        await callback.message.edit_text(text=MENU,reply_markup=main_menu())
+        await callback.message.edit_text(text=Screens.MENU_TITLE,reply_markup=main_menu())
         return
     await render_categories_screen(callback,db,budget_id,callback_data.kind,1,callback_data.kind)
 

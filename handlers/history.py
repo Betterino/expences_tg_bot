@@ -6,6 +6,7 @@ from constants import PER_PAGE
 from db import Database
 from keyboards import history_kb
 from utils import format_money, format_tx_date
+from texts import History, Errors
 
 router = Router(name="history")
 
@@ -16,9 +17,9 @@ async def render_history_screen(callback: CallbackQuery, db: Database, budget_id
     page = min(max(page, 1), max_page)
     rows = await db.list_recent_transactions(budget_id, PER_PAGE, PER_PAGE * (page - 1), kind)
     if not rows:
-        text = "Пока нет ни одной записи"
+        text = History.EMPTY
     else:
-        lines = [f"История\nСтраница {page:2d}/{max_page:2d}"]
+        lines = [History.HEADER.format(page=page, max_page=max_page)]
         for r in rows:
             sign = "+" if r["kind"] == "income" else "-"
             who = r["nickname"] or f"ID {r['added_by']}"
@@ -32,7 +33,7 @@ async def render_history_screen(callback: CallbackQuery, db: Database, budget_id
 @router.callback_query(NavCB.filter(F.to == "history"))
 async def open_history(callback: CallbackQuery, db: Database, budget_id):
     if budget_id is None:
-        await callback.message.answer("Сначала создай бюджет: /start")
+        await callback.message.answer(Errors.NO_BUDGET)
         return
     await render_history_screen(callback, db, budget_id, 1)
 

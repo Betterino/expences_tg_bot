@@ -3,7 +3,8 @@ from db import Database
 from utils import stats_bounds, create_stats_text, calc_page, parse_categories_edit
 from aiogram.types import  CallbackQuery
 from aiogram.fsm.context import FSMContext
-from constants import PER_PAGE, PURPOSE_DICT_SCREENS
+from constants import PER_PAGE
+from texts import Screens, Errors
 
 ### Stat screen
 async def render_special_stats_screen(year_start, month_start, year_end, month_end, db: Database, budget_id, callback: CallbackQuery):
@@ -34,10 +35,10 @@ async def render_categories_screen(callback: CallbackQuery, db:Database, budget_
         categories = await db.list_active_categories(budget_id,kind)
     max_page = len(categories)// PER_PAGE + (1 if len(categories) % PER_PAGE != 0 else 0)
     categories = calc_page(categories,page)
-    text = PURPOSE_DICT_SCREENS[purpose]
-    text += f"Страница {page:2d}/{max_page:2d}"
+    text = Screens.CATEGORY_PICKER[purpose]
+    text += Screens.PAGE.format(page=page, max_page=max_page)
     if len(categories) == 0:
-        text = "Категорий для этого действия нет"
+        text = Errors.BAD_PAGE
     await callback.message.edit_text(text=text, reply_markup=categories_kb(categories,page,max_page,purpose,kind))
 
 async def build_edit_screen(db: Database, budget_id: int, text: str = "",kind: str = "expense",):

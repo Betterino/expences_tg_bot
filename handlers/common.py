@@ -6,7 +6,7 @@ from aiogram import F,Router
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
-from texts import START_TEXT,MENU,CANCEL
+from texts import Onboarding, Screens
 router = Router(name="common")
 
 
@@ -14,22 +14,22 @@ router = Router(name="common")
 @router.message(Command("cancel"))
 async def cancel(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer(CANCEL+MENU, reply_markup=main_menu())
+    await message.answer(Screens.CANCELLED+Screens.MENU_TITLE, reply_markup=main_menu())
 
 ### Команда старта
 @router.message(Command("start"))
 async def handle_start(message: Message, budget_id):
     if budget_id is None:
-        await message.answer(START_TEXT, reply_markup=onboarding_kb())
+        await message.answer(Onboarding.START_TEXT, reply_markup=onboarding_kb())
         ### Добавить сюда текст с пояснениями и тд
     else:
-        await message.answer(MENU,reply_markup=main_menu())
+        await message.answer(Screens.MENU_TITLE,reply_markup=main_menu())
 
 
 @router.callback_query(NavCB.filter(F.to == "menu"))
 async def main_menu_handler(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text(text=MENU,reply_markup=main_menu())
+    await callback.message.edit_text(text=Screens.MENU_TITLE,reply_markup=main_menu())
 
 
 ### страницы категорий

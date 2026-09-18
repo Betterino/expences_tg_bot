@@ -111,7 +111,7 @@ class Database:
             await self.conn.executescript(script)
             await self.conn.execute(f"PRAGMA user_version = {i}")
             await self.conn.commit()
-            print(f"миграция {i} применена") 
+            logger.info("миграция %s применена", i)
 
     async def close(self):
         if self._conn:

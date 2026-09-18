@@ -4,6 +4,7 @@ from pathlib import Path
 from db import Database
 from handlers.onboard import JoinBudget, join_code_budget
 from tests.fakes import FakeMessage, make_state
+from texts import Onboarding
 
 
 async def test_invalid_code_replies_without_editing() -> None:
@@ -19,7 +20,7 @@ async def test_invalid_code_replies_without_editing() -> None:
 
             await join_code_budget(message, db, state, user)
 
-            message.answer.assert_awaited_once_with("Такого бюджета нет")
+            message.answer.assert_awaited_once_with(Onboarding.NO_SUCH_BUDGET)
             message.edit_text.assert_not_awaited()
             assert await state.get_state() == JoinBudget.waiting_code.state  # untouched on failure
 

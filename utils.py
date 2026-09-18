@@ -2,6 +2,7 @@ from calendar import monthrange
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
 from constants import PER_PAGE
+from texts import Stats, Categories
 def parse_amount(text: str) -> int|None:
     try:
         text = text.replace(".",",")
@@ -58,7 +59,7 @@ def today(tz_name: str):
 
 def create_stats_text(start,end,total_e,expense,income,total_i):
     text = ""
-    text += f"Статистика за период\n{start} - {end}\n<code>{"Название":<18}|{"Траты":<12}|{"Максимум":<12}\n"
+    text += f"Статистика за период\n{start} - {end}\n<code>{Categories.NAME_COLUMN:<18}|{Stats.TOTAL_COLUMN:<12}|{Categories.MAX_COLUMN:<12}\n"
     for r in expense:
         if r["maximum"] != 0:
             text += f"{r["name"]:<18}|{format_money(r["total"]):<12}|{format_money(r["maximum"]):<12}\n"
@@ -66,12 +67,12 @@ def create_stats_text(start,end,total_e,expense,income,total_i):
             text += f"{r["name"]:<18}|{format_money(r["total"]):<12}\n"
     text += f"Всего: {format_money(total_e):<12}"
     text += "</code>\n"
-    text += f"\n<code>{"Название":<18}|{"Доходы":<12}\n"
+    text += f"\n<code>{Categories.NAME_COLUMN:<18}|{Stats.INCOME_COLUMN:<12}\n"
     for r in income:
             text += f"{r["name"]:<18}|{format_money(r["total"]):<12}\n"
     text += f"Всего: {format_money(total_i):<12}"
     diff = total_i - total_e
-    text += f"\nИтого: {format_money(diff):<12} У вас {"Избыток" if diff >= 0 else "Убыток" }"
+    text += f"\nИтого: {format_money(diff):<12} У вас {Stats.SURPLUS if diff >= 0 else Stats.DEFICIT}"
     return text+"</code>"
 
 def parse_categories_edit(categories,kind = "expense"):
@@ -89,9 +90,9 @@ def parse_categories_edit(categories,kind = "expense"):
             else:
                 archs += f"{row["name"]:<18}\n"
     if kind == "expense":
-        final_txt = f"Активные Категории:\n<code>{"Название":<18}" + f"| {"Максимум":<12}\n" + cats + f"</code>Архивные Категории:\n<code>{"Название":<18} | {"Максимум":<12}\n" + archs + "</code>"
+        final_txt = f"{Categories.ACTIVE_HEADER}\n<code>{Categories.NAME_COLUMN:<18}" + f"| {Categories.MAX_COLUMN:<12}\n" + cats + f"</code>{Categories.ARCHIVED_HEADER}\n<code>{Categories.NAME_COLUMN:<18} | {Categories.MAX_COLUMN:<12}\n" + archs + "</code>"
     else:
-        final_txt = f"Активные Категории:\n<code>{"Название":<18}\n" + cats + f"</code>Архивные Категории:\n<code>{"Название":<18}\n" + archs + "</code>"
+        final_txt = f"{Categories.ACTIVE_HEADER}\n<code>{Categories.NAME_COLUMN:<18}\n" + cats + f"</code>{Categories.ARCHIVED_HEADER}\n<code>{Categories.NAME_COLUMN:<18}\n" + archs + "</code>"
     return final_txt
 
 def parse_date(date_str:str,timezone):
