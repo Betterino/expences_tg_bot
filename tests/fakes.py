@@ -28,6 +28,7 @@ class FakeMessage:
         self.text = text
         self.from_user = FakeUser(user_id)
         self.answer = AsyncMock()
+        self.answer_rich = AsyncMock()
         self.edit_text = AsyncMock()
 
 
@@ -52,3 +53,13 @@ def find_button(markup, text_contains: str):
             if text_contains in button.text:
                 return button
     return None
+
+
+def rich_blocks(mock: AsyncMock) -> list:
+    """Pull the block list out of the rich_message kwarg of a mock's last call.
+
+    edit_rich/answer_rich (handlers/screens.py) always pass rich_message=<InputRichMessage>,
+    never text= -- so tests assert against blocks instead of a formatted string.
+    """
+    rich_message = mock.await_args.kwargs["rich_message"]
+    return list(rich_message.blocks or [])

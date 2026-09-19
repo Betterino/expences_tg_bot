@@ -2,12 +2,13 @@ from datetime import date
 from callback import NavCB,RangeCB, MonthCB,StatsCB
 from keyboards import choose_range_kb, months_kb,special_stats_kb
 from db import Database
-from utils import stats_bounds, create_stats_text
+from utils import stats_bounds
+from views import stats_view
 from aiogram import F,Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import  CallbackQuery, Message
-from .screens import render_stats_screen,render_special_stats_screen
+from .screens import render_stats_screen,render_special_stats_screen, load_stats, answer_rich
 from texts import MONTHS, Errors, Screens, Stats
 class StatsRange(StatesGroup):
     waiting_year = State()
@@ -55,12 +56,8 @@ async def input_year(message: Message,state:FSMContext, db: Database,budget_id):
         return
     await state.clear()
     start, end = stats_bounds(year,1,year,12)
-    total_e = await db.stats_total(budget_id, start, end,"expense")
-    rows = await db.expense_by_category(budget_id, start, end)
-    total_i = await db.stats_total(budget_id, start, end,"income")
-    income = await db.income_by_category(budget_id,start,end)
-    text = create_stats_text(start,end,total_e,rows,income,total_i)
-    await message.answer(text,reply_markup=special_stats_kb(),parse_mode="HTML")
+    data = await load_stats(db, budget_id, start, end)
+    await answer_rich(message, stats_view(data), reply_markup=special_stats_kb())
 
 @router.callback_query(MonthCB.filter())
 async def input_month(callback: CallbackQuery,callback_data: MonthCB,state:FSMContext, db: Database,budget_id):

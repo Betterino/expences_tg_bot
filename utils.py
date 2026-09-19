@@ -1,8 +1,38 @@
 from calendar import monthrange
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
+import html
 from constants import PER_PAGE
-from texts import Stats, Categories
+
+ELLIPSIS = "…"
+
+
+def visible(text: str) -> str:
+    """The form the user actually sees -- what we measure and slice against.
+
+    Category names and nicknames are html.escape()d at INPUT time
+    (handlers/edit.py:146, handlers/settings.py:91) and stored escaped in SQLite, so
+    "Кафе & бары" lives in the DB as "Кафе &amp; бары". Anything that measures or
+    displays that string needs to unescape first, or "&" silently costs 5 columns
+    instead of 1.
+    """
+    return html.unescape(str(text))
+
+
+def fit(text: str, limit: int) -> str:
+    """Truncate to `limit` visible columns and return HTML-safe output.
+
+    Cutting happens before re-escaping, so an entity can never be split in half
+    (truncating an already-escaped string can leave a dangling "&am").
+    """
+    raw = visible(text)
+    if len(raw) <= limit:
+        return html.escape(raw, quote=False)
+    if limit <= 0:
+        return ""
+    return html.escape(raw[: limit - 1], quote=False) + ELLIPSIS
+
+
 def parse_amount(text: str) -> int|None:
     try:
         text = text.replace(".",",")
@@ -25,14 +55,23 @@ def parse_amount(text: str) -> int|None:
 def format_tx_date(date_str: str) -> str:
     return date.fromisoformat(date_str).strftime("%d.%m.%Y")
 
-def format_money(value: int) -> str:
+def format_money(value: int, sep: str = "") -> str:
+    """Format kopeks as rubles,kopeks. `sep` groups thousands (e.g. narrow nbsp).
+
+    Sign is handled via abs() + a re-attached prefix rather than // and % directly:
+    Python floors negative division, so -1205 // 100 == -13 and -1205 % 100 == 95,
+    which used to render -1205 as "-13,95" instead of "-12,05".
+    """
+    sign = "-" if value < 0 else ""
+    value = abs(value)
     rubles = value // 100
     kopeiki = value % 100
+    rub_text = f"{rubles:,}".replace(",", sep) if sep else str(rubles)
     if kopeiki > 0:
-        text = f"{rubles},{kopeiki:02d}"
-    else: 
-        text = str(rubles)
-    return text
+        text = f"{rub_text},{kopeiki:02d}"
+    else:
+        text = rub_text
+    return sign + text
 
 def stats_bounds(start_year,start_month,end_year,end_month) ->tuple[str,str]:
     return f"{start_year}-{start_month:02d}-01", f"{end_year}-{end_month:02d}-{monthrange(end_year,end_month)[1]:02d}"
@@ -56,44 +95,6 @@ def calc_page(categories,page):
 
 def today(tz_name: str):
     return datetime.now(ZoneInfo(tz_name)).date()
-
-def create_stats_text(start,end,total_e,expense,income,total_i):
-    text = ""
-    text += f"Статистика за период\n{start} - {end}\n<code>{Categories.NAME_COLUMN:<18}|{Stats.TOTAL_COLUMN:<12}|{Categories.MAX_COLUMN:<12}\n"
-    for r in expense:
-        if r["maximum"] != 0:
-            text += f"{r["name"]:<18}|{format_money(r["total"]):<12}|{format_money(r["maximum"]):<12}\n"
-        else:
-            text += f"{r["name"]:<18}|{format_money(r["total"]):<12}\n"
-    text += f"Всего: {format_money(total_e):<12}"
-    text += "</code>\n"
-    text += f"\n<code>{Categories.NAME_COLUMN:<18}|{Stats.INCOME_COLUMN:<12}\n"
-    for r in income:
-            text += f"{r["name"]:<18}|{format_money(r["total"]):<12}\n"
-    text += f"Всего: {format_money(total_i):<12}"
-    diff = total_i - total_e
-    text += f"\nИтого: {format_money(diff):<12} У вас {Stats.SURPLUS if diff >= 0 else Stats.DEFICIT}"
-    return text+"</code>"
-
-def parse_categories_edit(categories,kind = "expense"):
-    cats = ""
-    archs = ""
-    for row in categories:
-        if row["is_archived"] == 0:
-            if kind == "expense":
-                cats += f"{row["name"]:<18} | {format_money(row["maximum"]):<12}\n"
-            else:
-                cats += f"{row["name"]:<18}\n"
-        else:
-            if kind == "expense":
-                archs += f"{row["name"]:<18} | {format_money(row["maximum"]):<12}\n"
-            else:
-                archs += f"{row["name"]:<18}\n"
-    if kind == "expense":
-        final_txt = f"{Categories.ACTIVE_HEADER}\n<code>{Categories.NAME_COLUMN:<18}" + f"| {Categories.MAX_COLUMN:<12}\n" + cats + f"</code>{Categories.ARCHIVED_HEADER}\n<code>{Categories.NAME_COLUMN:<18} | {Categories.MAX_COLUMN:<12}\n" + archs + "</code>"
-    else:
-        final_txt = f"{Categories.ACTIVE_HEADER}\n<code>{Categories.NAME_COLUMN:<18}\n" + cats + f"</code>{Categories.ARCHIVED_HEADER}\n<code>{Categories.NAME_COLUMN:<18}\n" + archs + "</code>"
-    return final_txt
 
 def parse_date(date_str:str,timezone):
     now = today(timezone)

@@ -1,13 +1,14 @@
 import tempfile
 from pathlib import Path
 
+import richtext
 from db import Database
 from handlers.stats import input_year
-from tests.fakes import FakeMessage, make_state
+from tests.fakes import FakeMessage, make_state, rich_blocks
 
 
 async def test_input_year_includes_both_totals() -> None:
-    """Regression test for create_stats_text() being called with only 4 of 6 required args."""
+    """Regression test for the stats screen being built from only 4 of 6 required args."""
     with tempfile.TemporaryDirectory() as tmp:
         async with Database(Path(tmp) / "test.db") as db:
             await db.ensure_user(111)
@@ -23,8 +24,8 @@ async def test_input_year_includes_both_totals() -> None:
 
             await input_year(message, state, db, budget_id)  # would raise TypeError before the fix
 
-            message.answer.assert_awaited_once()
-            text = message.answer.await_args.args[0]
+            message.answer_rich.assert_awaited_once()
+            text = "".join(richtext.walk_text(rich_blocks(message.answer_rich))).replace("\xa0", "")
             assert "250" in text     # трата
             assert "5000" in text    # доход
             assert await state.get_data() == {}

@@ -1,10 +1,11 @@
 import tempfile
 from pathlib import Path
 
+import richtext
 from callback import NavCB
 from db import Database
 from handlers.history import render_history_screen
-from tests.fakes import FakeCallbackQuery, unpack_callback_data
+from tests.fakes import FakeCallbackQuery, rich_blocks, unpack_callback_data
 
 
 async def test_list_recent_transactions_ordering_and_fallbacks() -> None:
@@ -59,7 +60,8 @@ async def test_render_history_screen_shows_id_fallback_and_pagination() -> None:
             callback = FakeCallbackQuery()
             await render_history_screen(callback, db, budget_id, page=1)
 
-            text = callback.message.edit_text.await_args.kwargs["text"]
+            blocks = rich_blocks(callback.message.edit_text)
+            text = "".join(richtext.walk_text(blocks))
             assert "ID 111" in text  # нет никнейма -> fallback на ID
 
             # только 1 запись -> одна страница -> кнопок пагинации нет, только "Меню"

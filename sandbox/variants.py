@@ -17,15 +17,15 @@ from aiogram.types import (
     InputRichBlockListItem,
     InputRichBlockParagraph,
     InputRichBlockSectionHeading,
-    InputRichBlockTable,
     InputRichMessage,
-    RichBlockTableCell,
 )
 
+import richtext
 from sandbox import TableData
 from sandbox.helpers import bar, fit, lpad, money, percent, rpad, visible
 from texts import Categories, Stats
-from utils import create_stats_text, format_tx_date
+from utils import format_tx_date
+from views import stats_view
 
 SEP = " "  # неразрывный пробел как разделитель разрядов: 12 340, а не 12340
 
@@ -84,15 +84,40 @@ def verdict(data: TableData) -> str:
 # --------------------------------------------------------------------------- 0 base
 
 
-@variant("base", "0 Как сейчас")
+@variant("base", "0 Как было до rich")
 def render_base(data: TableData) -> str:
-    """Контрольный образец: буквально вызывает utils.create_stats_text.
+    """Контрольный образец: то, чем был utils.create_stats_text до перехода на rich.
 
-    Tests: nothing -- it IS production. Having it in the registry means every
-    comparison is against the real thing, with no duplicated copy that can drift.
-    Its column drift on "Кафе &amp; бары" is authentic, not a bug in the sandbox.
+    Больше не используется в проде (см. views.py) -- живёт здесь как «до/после» для
+    сравнения. Column drift на "Кафе &amp; бары" воспроизведён намеренно: это ровно
+    та проблема, из-за которой считалась ширина по len() экранированной строки.
     """
-    return create_stats_text(data.start, data.end, data.total_e, data.expense, data.income, data.total_i)
+    from utils import format_money as _format_money
+
+    start, end, total_e, expense, income, total_i = (
+        data.start,
+        data.end,
+        data.total_e,
+        data.expense,
+        data.income,
+        data.total_i,
+    )
+    text = ""
+    text += f"Статистика за период\n{start} - {end}\n<code>{Categories.NAME_COLUMN:<18}|{Stats.TOTAL_COLUMN:<12}|{Categories.MAX_COLUMN:<12}\n"
+    for r in expense:
+        if r["maximum"] != 0:
+            text += f"{r['name']:<18}|{_format_money(r['total']):<12}|{_format_money(r['maximum']):<12}\n"
+        else:
+            text += f"{r['name']:<18}|{_format_money(r['total']):<12}\n"
+    text += f"Всего: {_format_money(total_e):<12}"
+    text += "</code>\n"
+    text += f"\n<code>{Categories.NAME_COLUMN:<18}|{Stats.INCOME_COLUMN:<12}\n"
+    for r in income:
+        text += f"{r['name']:<18}|{_format_money(r['total']):<12}\n"
+    text += f"Всего: {_format_money(total_i):<12}"
+    diff = total_i - total_e
+    text += f"\nИтого: {_format_money(diff):<12} У вас {Stats.SURPLUS if diff >= 0 else Stats.DEFICIT}"
+    return text + "</code>"
 
 
 # ---------------------------------------------------------------------------- 1 pre
@@ -298,51 +323,15 @@ def render_quote(data: TableData) -> str:
 # ------------------------------------------------------------------ 7 rich table
 
 
-def _header_cell(text: str) -> RichBlockTableCell:
-    return RichBlockTableCell(align="left", valign="middle", text=text, is_header=True)
-
-
-def _table_block(rows: list[dict], columns: list[str], total: int, total_label: str) -> InputRichBlockTable:
-    """One expense/income table: name column left-aligned, money columns right-aligned.
-
-    helpers.visible() undoes the html.escape() done at input time (handlers/edit.py:146)
-    -- rich block text is literal RichText, not markup, so re-escaping here would put a
-    literal "&amp;" on screen instead of "&".
-    """
-    header = [_header_cell(columns[0])] + [
-        RichBlockTableCell(align="right", valign="middle", text=c, is_header=True) for c in columns[1:]
-    ]
-    cells = [header]
-    for r in rows:
-        row = [RichBlockTableCell(align="left", valign="middle", text=visible(r["name"]))]
-        row.append(RichBlockTableCell(align="right", valign="middle", text=money(r["total"])))
-        if len(columns) > 2:
-            maximum = money(r["maximum"]) if r["maximum"] else "—"
-            row.append(RichBlockTableCell(align="right", valign="middle", text=maximum))
-        cells.append(row)
-    total_row = [RichBlockTableCell(align="left", valign="middle", text=total_label, is_header=True)]
-    total_row.append(RichBlockTableCell(align="right", valign="middle", text=money(total), is_header=True))
-    if len(columns) > 2:
-        total_row.append(RichBlockTableCell(align="right", valign="middle", text=""))
-    cells.append(total_row)
-    return InputRichBlockTable(cells=cells, is_bordered=True, is_striped=True)
-
-
 @variant("rtable", "7 Rich-таблица")
 def render_rtable(data: TableData) -> InputRichMessage:
-    """The direct answer to what the sandbox is for: a native table block, real cells,
-    per-column alignment via align="left"/"right" -- no <pre>, no padding math, no
-    SEP narrow-space grouping. Requires Bot API 10.1+ (InputRichBlockTable)."""
-    expense_columns = [Categories.NAME_COLUMN, Stats.TOTAL_COLUMN, Categories.MAX_COLUMN]
-    income_columns = [Categories.NAME_COLUMN, Stats.INCOME_COLUMN]
-    blocks: list = [
-        InputRichBlockParagraph(text=f"Статистика · {period(data)}"),
-        _table_block(data.expense, expense_columns, data.total_e, "Всего"),
-        InputRichBlockDivider(),
-        _table_block(data.income, income_columns, data.total_i, "Всего"),
-        InputRichBlockFooter(text=f"Итого: {money(data.diff)} — у вас {verdict(data)}"),
-    ]
-    return InputRichMessage(blocks=blocks)
+    """Тонкая обёртка над views.stats_view -- то, что реально уходит в прод.
+
+    Не дублирует построение таблицы: если прод меняется, «вариант 7» меняется вместе
+    с ним, а не расходится с реальным экраном статистики, как это было бы с
+    отдельной копией _table_block. Requires Bot API 10.1+ (InputRichBlockTable).
+    """
+    return richtext.message(stats_view(data))
 
 
 # --------------------------------------------------------------- 8 rich document
