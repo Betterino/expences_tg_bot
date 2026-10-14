@@ -5,18 +5,25 @@ InputRichMessage content field) but targets the production views instead of the
 sandbox's style gallery -- these are the three screens that actually ship.
 """
 import richtext
+from constants import VERSION
 from sandbox.fixtures import CATEGORY_ROWS, FIXTURES, HISTORY_ROWS
-from views import categories_view, history_view, stats_view
+from texts import About
+from views import about_view, categories_view, history_view, menu_view, stats_view
 
 
 def _all_screens():
     for name, data in FIXTURES.items():
         yield f"stats/{name}", stats_view(data)
     yield "history/rows", history_view(HISTORY_ROWS, page=1, max_page=1)
+    yield "history/rows-4col", history_view(HISTORY_ROWS, page=1, max_page=1, who="all")
+    yield "history/rows-3col", history_view(HISTORY_ROWS, page=1, max_page=1, who="mine")
     yield "history/empty", history_view([], page=1, max_page=1)
     yield "categories/expense", categories_view(CATEGORY_ROWS, "expense")
     yield "categories/income", categories_view(CATEGORY_ROWS, "income")
     yield "categories/prefix", categories_view(CATEGORY_ROWS, "expense", prefix="Добавил Кафе")
+    yield "menu", menu_view()
+    yield "about", about_view(VERSION, About.SUMMARY, "https://example.com/changelog")
+    yield "about-no-url", about_view(VERSION, About.SUMMARY, "")
 
 
 def test_every_screen_uses_exactly_one_content_field() -> None:

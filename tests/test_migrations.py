@@ -1,16 +1,11 @@
-import tempfile
-from pathlib import Path
-
 from db import Database
 
 
-async def test_migrations_idempotent() -> None:
+async def test_migrations_idempotent(tmp_path) -> None:
     """Повторное подключение к той же базе не должно падать на миграциях."""
-    with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / "test.db"
-        async with Database(path):
-            pass
+    path = tmp_path / "test.db"
+    async with Database(path):
+        pass
 
-        async with Database(path):          # миграции уже применены — не должны выполниться повторно
-            pass
-        print("migrations ✓")
+    async with Database(path):          # миграции уже применены — не должны выполниться повторно
+        pass

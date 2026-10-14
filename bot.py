@@ -1,34 +1,48 @@
-from dotenv import get_key
-from aiogram import Bot,Dispatcher, BaseMiddleware
-from aiogram.types import User, ErrorEvent, Update
-from aiogram.fsm.storage.memory import MemoryStorage
+import asyncio
+import logging
+import sys
+import time
+from pathlib import Path
+
+from aiogram import BaseMiddleware, Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-import asyncio
-import time
+from aiogram.fsm.storage.memory import MemoryStorage, SimpleEventIsolation
+from aiogram.types import ErrorEvent, Update, User
+from aiogram.utils.callback_answer import CallbackAnswerMiddleware
+from dotenv import get_key
+
 from db import Database, backup_loop
 from handlers import routers
-from pathlib import Path
-import logging
-from logging_utils import describe_update
+from logging_utils import LOG_FORMAT, describe_update, setup_logging
+from preflight import SuiteFailed, run_tests
 from texts import Errors
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-)
+# stderr-only until main() calls setup_logging() -- kept so the API_KEY error below is visible.
+logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 logging.getLogger("aiogram.event").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 key = get_key(".env","API_KEY")
-assert key is not None
+if key is None:
+    raise RuntimeError("API_KEY не задан в .env")
+# Message bodies are personal data (SEC-5) -- off by default, opt in for local debugging.
+LOG_MESSAGE_TEXT = get_key(".env", "LOG_MESSAGE_TEXT") == "1"
 bot = Bot(key,default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-dp = Dispatcher(storage=MemoryStorage())
+# One asyncio.Lock per (bot, chat, user): a user's updates queue instead of interleaving,
+# so a "Меню" tap can no longer state.clear() in the middle of another update's flow
+# (postmortems/2026-10-05-add-expense-mode-keyerror.md). The default is a no-op lock.
+dp = Dispatcher(storage=MemoryStorage(), events_isolation=SimpleEventIsolation())
 
 
 class LoggingMiddleware(BaseMiddleware):
+    """Registered after the Dispatcher's own FSM outer middleware, so it runs *inside*
+    the per-user isolation lock: "→" is logged once the lock is acquired, a queued
+    update shows up as a large "←" elapsed_ms, and completions can no longer arrive
+    out of order for the same user."""
+
     async def __call__(self, handler, event: Update, data):
-        logger.info("→ %s", describe_update(event))
+        logger.info("→ %s", describe_update(event, LOG_MESSAGE_TEXT))
         started = time.monotonic()
         try:
             return await handler(event, data)
@@ -39,7 +53,7 @@ class LoggingMiddleware(BaseMiddleware):
 
 @dp.error()
 async def on_error(event: ErrorEvent):
-    logger.exception("ошибка при обработке: %s", describe_update(event.update))
+    logger.exception("ошибка при обработке: %s", describe_update(event.update, LOG_MESSAGE_TEXT))
     try:
         if event.update.callback_query is not None:
             await event.update.callback_query.answer(Errors.SOMETHING_BROKE, show_alert=True)
@@ -62,14 +76,11 @@ class ContextMiddleware(BaseMiddleware):
         data["budget_id"] = user["current_budget"]
         data["tz"] = user["timezone"]
         data["nickname"] = user["nickname"]
-        if data["budget_id"] is not None:
-            data["budget_type"] = await self.db.get_budget_type(data["budget_id"])
-        else:
-            data["budget_type"] = None
         return await handler(event, data)
-    
+
 
 async def main():
+    setup_logging(Path("data/logs"))
     db = Database(Path("data/expenses.db"))
     await db.connect()
     task = asyncio.create_task(backup_loop(db, Path("data/backups")))
@@ -77,16 +88,31 @@ async def main():
     middleware = ContextMiddleware(db)
     dp.message.middleware(middleware)
     dp.callback_query.middleware(middleware)
+    dp.callback_query.middleware(CallbackAnswerMiddleware())
     for router in routers:
         dp.include_router(router)
     try:
         await dp.start_polling(bot)
     finally:
         task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
         await db.close()
 
 
 if __name__ == "__main__":
+    # Red suite = no polling (preflight.py). --skip-tests is the emergency bypass, e.g.
+    # to bring the bot back up while a known-flaky test is being fixed.
+    if "--skip-tests" in sys.argv:
+        logger.warning("тесты пропущены (--skip-tests)")
+    else:
+        logger.info("прогоняю тесты перед запуском...")
+        try:
+            logger.info("тесты пройдены: %s", run_tests())
+        except SuiteFailed as failure:
+            logger.error(
+                "тесты не прошли (%s), бот не запущен. Отчёт: %s", failure.summary, failure.report.resolve()
+            )
+            sys.exit(1)
     asyncio.run(main())
 
 

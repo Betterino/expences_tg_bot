@@ -64,9 +64,12 @@ FIXTURES = {"demo": DEMO, "empty": EMPTY, "long": LONG, "deficit": DEFICIT}
 # никнейма (added_by по ID), запись с удалённой категорией (category_name is None),
 # и экранированные имена, чтобы views.visible() было на чём падать, если забыть его.
 HISTORY_ROWS = [
-    {"date": "2026-03-01", "amount": -120500, "kind": "expense", "category_name": "Продукты", "nickname": "Аня", "added_by": 1},
-    {"date": "2026-03-02", "amount": -50000, "kind": "expense", "category_name": None, "nickname": "", "added_by": 42},
-    {"date": "2026-03-03", "amount": 300000, "kind": "income", "category_name": "Кафе &amp; бары", "nickname": None, "added_by": 7},
+    {"date": "2026-03-01", "amount": -120500, "kind": "expense",
+     "category_name": "Продукты", "nickname": "Аня", "added_by": 1},
+    {"date": "2026-03-02", "amount": -50000, "kind": "expense",
+     "category_name": None, "nickname": "", "added_by": 42},
+    {"date": "2026-03-03", "amount": 300000, "kind": "income",
+     "category_name": "Кафе &amp; бары", "nickname": None, "added_by": 7},
 ]
 
 CATEGORY_ROWS = [

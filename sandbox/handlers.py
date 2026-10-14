@@ -16,6 +16,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, InputRichBlockParagraph, InputRichMessage
 
 from callback import NavCB
+from constants import ADMIN_ID
 from db import Database
 from sandbox import TableData
 from sandbox.callback import SandboxCB
@@ -26,6 +27,19 @@ from sandbox.variants import VARIANTS, Body, get, render
 from utils import stats_bounds, today
 
 router = Router(name="sandbox")
+
+
+def _is_admin(callback: CallbackQuery) -> bool:
+    # A plain function, not `F.from_user.id == ADMIN_ID` -- a magic filter bakes ADMIN_ID's
+    # value in at router-construction time, while this looks the module global up fresh on
+    # every call (needed for tests to patch sandbox.handlers.ADMIN_ID).
+    return ADMIN_ID is not None and callback.from_user.id == ADMIN_ID
+
+
+# The button that reaches here is already hidden from non-admins (keyboards.settings_kb),
+# but CallbackData is attacker-controlled -- a crafted "sbx:..." callback must not reach
+# a handler just because the button was never rendered (SEC-8).
+router.callback_query.filter(_is_admin)
 
 MESSAGE_LIMIT = 4096
 RICH_LIMIT = 32768
@@ -60,9 +74,7 @@ def _rich_text_len(blocks: list) -> int:
 async def live_data(db: Database, budget_id: int, tz: str) -> TableData:
     """Read-only snapshot of the current month, via the existing stats queries.
 
-    Uses utils.today(tz) rather than date.today(): handlers/stats.py:44 still reads the
-    server's clock even though ContextMiddleware injects the user's timezone, so around
-    month boundaries it can pick the wrong month. Separate fix, not this branch.
+    utils.today(tz), not date.today() -- the user's month, not the server's.
     """
     now = today(tz)
     start, end = stats_bounds(now.year, now.month, now.year, now.month)

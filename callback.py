@@ -12,11 +12,14 @@ class CategoryCB(CallbackData, prefix="cat"):
     id: int
     purpose: str
     kind: str = "expense"
+    mode: str = "today"  # today | yesterday | date -- carried from AddCB so the add-expense
+                          # flow doesn't depend on FSM state surviving a concurrent nav tap
 
 class CatPageCB(CallbackData,prefix="page"):
     page: int
     purpose: str
     kind: str = "expense"
+    mode: str = "today"
 
 class MonthCB(CallbackData,prefix="mon"):
     purpose: str # single | from | to
@@ -37,7 +40,10 @@ class NavCB(CallbackData,prefix="nav"):
     to: str  # menu | stats | edit | add | range | code
             # edit_
     kind: str = "expense"
+    mode: str = "today"  # only meaningful for to="add_again" -- see CategoryCB.mode
 
 class HistoryPageCB(CallbackData, prefix="hpg"):
     page: int
-    kind: str | None = None  # None = комбинированная лента (расходы + доходы)
+    kind: str | None = None  # None = комбинированная лента | "expense" | "income"
+    who: str = "all"         # all | mine
+    sort: str = "id"         # id = по добавлению | date = по дате операции

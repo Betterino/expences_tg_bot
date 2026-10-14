@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 import richtext
-from texts import Categories, History, Screens, Stats
+from texts import About, Categories, History, Screens, Stats
 from utils import format_money, format_tx_date, visible
 
 SEP = "\xa0"  # неразрывный пробел как разделитель разрядов: 12 340, а не 12340
@@ -69,27 +69,71 @@ def stats_view(data: TableData) -> list[richtext.Block]:
     ]
 
 
-def history_view(rows: Sequence[Mapping], page: int, max_page: int) -> list[richtext.Block]:
+def history_view(
+    rows: Sequence[Mapping],
+    page: int,
+    max_page: int,
+    kind: str | None = None,
+    who: str = "all",
+    sort: str = "id",
+) -> list[richtext.Block]:
     if not rows:
         return [richtext.para(History.EMPTY)]
-    header = f"История · {Screens.PAGE.format(page=page, max_page=max_page)}"
-    columns = ["Дата", "Сумма", "Категория", "Кто"]
+    filters = " · ".join(
+        (History.WHO_LABELS[who], History.KIND_LABELS[kind], History.SORT_LABELS[sort])
+    )
+    header = f"История · {filters} · {Screens.PAGE.format(page=page, max_page=max_page)}"
+    has_who = who != "mine"  # свой фильтр "мои" -> колонка "Кто" избыточна
+    columns = [History.DATE_COLUMN, History.AMOUNT_COLUMN, History.CATEGORY_COLUMN]
+    aligns = ["left", "right", "left"]
+    if has_who:
+        columns.append(History.KTO_COLUMN)
+        aligns.append("left")
     body = []
     for r in rows:
         amount = -r["amount"] if r["kind"] != "income" else r["amount"]
-        who = visible(r["nickname"]) if r["nickname"] else f"ID {r['added_by']}"
-        body.append(
-            [
-                format_tx_date(r["date"]),
-                format_money(amount, sep=SEP),
-                visible(r["category_name"]) if r["category_name"] else "Без категории",
-                who,
-            ]
-        )
+        row = [
+            format_tx_date(r["date"]),
+            format_money(amount, sep=SEP),
+            visible(r["category_name"]) if r["category_name"] else History.NO_CATEGORY,
+        ]
+        if has_who:
+            who_text = visible(r["nickname"]) if r["nickname"] else f"ID {r['added_by']}"
+            row.append(who_text)
+        body.append(row)
     return [
         richtext.para(header),
-        richtext.table(columns, body, aligns=["left", "right", "left", "left"]),
+        richtext.table(columns, body, aligns=aligns),
     ]
+
+
+def menu_view() -> list[richtext.Block]:
+    """Menu title + a collapsed 'what does each button do' table.
+
+    Collapsed by default (`is_open=False`) rather than an always-expanded block or a
+    separate screen -- the user knows the buttons already after the first few uses,
+    so the explanation should be one tap away, not always on screen.
+    """
+    rows = [[visible(label), visible(desc)] for label, desc in Screens.MENU_HELP]
+    return [
+        richtext.para(Screens.MENU_TITLE),
+        richtext.details(
+            Screens.MENU_HELP_SUMMARY,
+            [richtext.table(Screens.MENU_HELP_COLUMNS, rows, aligns=["left", "left"])],
+            is_open=False,
+        ),
+    ]
+
+
+def about_view(version: str, summary: str, url: str) -> list[richtext.Block]:
+    blocks: list[richtext.Block] = [
+        richtext.heading(About.TITLE),
+        richtext.para(About.VERSION_LINE.format(version=version)),
+        richtext.para(visible(summary)),
+    ]
+    if url:
+        blocks.append(richtext.footer(f"{About.CHANGELOG_LINK}: {url}"))
+    return blocks
 
 
 def categories_view(categories: Sequence[Mapping], kind: str, prefix: str = "") -> list[richtext.Block]:

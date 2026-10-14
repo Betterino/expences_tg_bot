@@ -103,7 +103,8 @@ def render_base(data: TableData) -> str:
         data.total_i,
     )
     text = ""
-    text += f"Статистика за период\n{start} - {end}\n<code>{Categories.NAME_COLUMN:<18}|{Stats.TOTAL_COLUMN:<12}|{Categories.MAX_COLUMN:<12}\n"
+    text += f"Статистика за период\n{start} - {end}\n"
+    text += f"<code>{Categories.NAME_COLUMN:<18}|{Stats.TOTAL_COLUMN:<12}|{Categories.MAX_COLUMN:<12}\n"
     for r in expense:
         if r["maximum"] != 0:
             text += f"{r['name']:<18}|{_format_money(r['total']):<12}|{_format_money(r['maximum']):<12}\n"

@@ -1,8 +1,10 @@
-import aiosqlite
-from pathlib import Path
-import secrets
 import asyncio
 import logging
+import secrets
+from datetime import datetime
+from pathlib import Path
+
+import aiosqlite
 
 logger = logging.getLogger(__name__)
 
@@ -21,17 +23,17 @@ current_budget INTEGER DEFAULT NULL REFERENCES budgets(budget_id));
 CREATE TABLE IF NOT EXISTS categories(
 category_id INTEGER PRIMARY KEY,
 name TEXT NOT NULL,
-budget_id INTEGER REFERENCES budgets(budget_id) ON DELETE CASCADE, 
+budget_id INTEGER REFERENCES budgets(budget_id) ON DELETE CASCADE,
 maximum INTEGER NOT NULL DEFAULT 0,
 sort_order INTEGER DEFAULT 10,
 is_archived INTEGER NOT NULL DEFAULT 0);
 
 CREATE TABLE IF NOT EXISTS expenses(
-expense_id INTEGER PRIMARY KEY, 
-date TEXT NOT NULL, 
-amount INTEGER NOT NULL, 
-category_id INTEGER REFERENCES categories(category_id) ON DELETE SET NULL, 
-budget_id INTEGER REFERENCES budgets(budget_id) ON DELETE CASCADE, 
+expense_id INTEGER PRIMARY KEY,
+date TEXT NOT NULL,
+amount INTEGER NOT NULL,
+category_id INTEGER REFERENCES categories(category_id) ON DELETE SET NULL,
+budget_id INTEGER REFERENCES budgets(budget_id) ON DELETE CASCADE,
 added_by INTEGER REFERENCES users(user_id));
 CREATE INDEX IF NOT EXISTS idx_expenses_period ON expenses(budget_id, date);
 
@@ -52,6 +54,13 @@ INSERT OR IGNORE INTO default_categories(name, sort_order) VALUES
     ('Развлечения', 80),
     ('Прочее', 90);
 """
+
+# Whitelist, never string interpolation: `sort` comes off a callback button and must
+# never reach SQL as anything but one of these two literal ORDER BY clauses.
+HISTORY_SORT_ORDERS = {
+    "id": "e.expense_id DESC",
+    "date": "e.date DESC, e.expense_id DESC",  # tiebreaker keeps same-day rows stable
+}
 
 MIGRATIONS = [
     # версия 1
@@ -119,22 +128,24 @@ class Database:
             self._conn = None
 
     async def add_expense(self, budget_id, user_id, category_id, amount, date,kind="expense"):
-        cursor = await self.conn.execute(
+        async with self.conn.execute(
             "INSERT INTO expenses (budget_id, added_by, category_id, amount, date,kind) "
             "VALUES (?, ?, ?, ?, ?,?)",
             (budget_id, user_id, category_id, amount, date,kind),
-        )
+        ) as cursor:
+            lastrowid = cursor.lastrowid
         await self.conn.commit()
-        return cursor.lastrowid
+        return lastrowid
 
     async def add_category(self,name, budget_id,  maximum, sort_order, kind = "expense"):
-        cursor = await self.conn.execute(
+        async with self.conn.execute(
             "INSERT INTO categories (name,budget_id, maximum, sort_order, kind) "
             "VALUES (?, ?, ?, ?,?)",
             (name, budget_id, maximum, sort_order, kind),
-        )
+        ) as cursor:
+            lastrowid = cursor.lastrowid
         await self.conn.commit()
-        return cursor.lastrowid
+        return lastrowid
 
     async def get_maximum_sort_order(self,budget_id,kind = "expense"):
         async with self.conn.execute(
@@ -144,7 +155,7 @@ class Database:
         ) as cursor:
             row = await cursor.fetchone()
         return row["max"] if row else None
-    
+
     async def check_category_name(self,budget_id,name,kind = "expense"):
         async with self.conn.execute(
             "SELECT name FROM categories "
@@ -153,7 +164,7 @@ class Database:
         ) as cursor:
             row = await cursor.fetchone()
         return row
-    
+
     async def check_category_name_archived(self,budget_id,name,kind = "expense"):
         async with self.conn.execute(
             "SELECT name FROM categories "
@@ -162,35 +173,41 @@ class Database:
         ) as cursor:
             row = await cursor.fetchone()
         return row
-    
-    async def get_budget_type(self, budget_id):
-        cursor = await self.conn.execute(
-            "SELECT type FROM budgets WHERE budget_id = ?",
-            (budget_id,),
-        )
-        return await cursor.fetchone()
-    
+
     async def get_invite_code(self,budget_id):
-        cursor = await self.conn.execute(
+        async with self.conn.execute(
             "SELECT invite_code FROM budgets WHERE budget_id = ?",
             (budget_id,),
-        )
-        row = await cursor.fetchone()
+        ) as cursor:
+            row = await cursor.fetchone()
         return row["invite_code"] if row else None
-    
+
     async def check_invite_code(self,invite_code):
-        cursor = await self.conn.execute(
+        async with self.conn.execute(
             "SELECT budget_id FROM budgets WHERE invite_code = ?",
             (invite_code,),
-        )
-        row = await cursor.fetchone()
+        ) as cursor:
+            row = await cursor.fetchone()
         return row["budget_id"] if row else None
 
-    async def add_to_budget(self,user_id,budget_id):
-        cursor = await self.conn.execute(
-                    "UPDATE users SET current_budget = ? WHERE user_id = ?",(budget_id,user_id,),)
+    async def rotate_invite_code(self,budget_id):
+        # A leaked code (SEC-4) is permanent otherwise -- anyone who ever saw it can
+        # join the budget forever. Rotating invalidates every code issued before it.
+        new_code = secrets.token_urlsafe(8)
+        async with self.conn.execute(
+            "UPDATE budgets SET invite_code = ? WHERE budget_id = ?",
+            (new_code, budget_id),
+        ) as cursor:
+            rowcount = cursor.rowcount
         await self.conn.commit()
-        return cursor.lastrowid
+        return new_code if rowcount else None
+
+    async def add_to_budget(self,user_id,budget_id):
+        async with self.conn.execute(
+                    "UPDATE users SET current_budget = ? WHERE user_id = ?",(budget_id,user_id,),) as cursor:
+            rowcount = cursor.rowcount
+        await self.conn.commit()
+        return rowcount
 
     async def stats_total(self, budget_id, start, end, kind = "expense"):
         async with self.conn.execute(
@@ -200,9 +217,10 @@ class Database:
         ) as cursor:
             row = await cursor.fetchone()
         return row["total"] if row else None
-    
+
     async def ensure_user(self,user_id):
-        await self.conn.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+        async with self.conn.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,)):
+            pass  # nothing to read -- the with-block is only there to close the cursor (PAT-5)
         await self.conn.commit()
         async with self.conn.execute(
             "SELECT * FROM users "
@@ -211,24 +229,34 @@ class Database:
         ) as cursor:
             row = await cursor.fetchone()
         return row
-    
+
     async def create_budget(self, user_id, budget_type="fixed"):
-        cursor = await self.conn.execute(
+        async with self.conn.execute(
             "INSERT INTO budgets (created_by, type, invite_code) VALUES (?, ?, ?)",
             (user_id, budget_type, secrets.token_urlsafe(8)),
-        )
-        budget_id = cursor.lastrowid
-        await self.conn.execute(
+        ) as cursor:
+            budget_id = cursor.lastrowid
+        async with self.conn.execute(
             "INSERT INTO categories (name, budget_id,sort_order,kind) "
             "SELECT name, ?, sort_order, kind FROM default_categories",
             (budget_id,),
-        )
-        await self.conn.execute(
+        ):
+            pass
+        async with self.conn.execute(
             "UPDATE users SET current_budget = ? WHERE user_id = ?", (budget_id, user_id)
-        )
+        ):
+            pass
         await self.conn.commit()
         return budget_id
-                 
+
+    async def category_in_budget(self, budget_id, category_id) -> bool:
+        async with self.conn.execute(
+            "SELECT 1 FROM categories WHERE category_id = ? AND budget_id = ?",
+            (category_id, budget_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+        return row is not None
+
     async def list_active_categories(self, budget_id,kind="expense"):
         async with self.conn.execute(
             "SELECT category_id, name FROM categories "
@@ -236,7 +264,7 @@ class Database:
             (budget_id,kind,),
         ) as cursor:
             return await cursor.fetchall()
-    
+
     async def expense_by_category(self, budget_id, start, end):
         async with self.conn.execute(
             """SELECT   c.name AS name,
@@ -251,7 +279,7 @@ class Database:
             (start, end,budget_id,),
         ) as cursor:
             return await cursor.fetchall()
-        
+
     async def income_by_category(self,budget_id,start,end):
         async with self.conn.execute(
             """SELECT   c.name AS name,
@@ -266,7 +294,7 @@ class Database:
             (start, end,budget_id,),
         ) as cursor:
             return await cursor.fetchall()
-        
+
     async def all_categories(self,budget_id,kind = "expense"):
         async with self.conn.execute(
             """SELECT   name,
@@ -286,7 +314,7 @@ class Database:
             "WHERE budget_id = ? AND is_archived != 0 AND kind = ? ORDER BY sort_order, category_id ",
             (budget_id,kind),
         ) as cursor:
-            return await cursor.fetchall()    
+            return await cursor.fetchall()
 
     async def list_all_categories(self,budget_id,kind = "expense"):
         async with self.conn.execute(
@@ -294,81 +322,98 @@ class Database:
             "WHERE budget_id = ? AND kind = ? ORDER BY is_archived, sort_order, category_id ",
             (budget_id,kind,),
         ) as cursor:
-            return await cursor.fetchall() 
+            return await cursor.fetchall()
 
-    async def archive_category(self,category_id):
-        cursor = await self.conn.execute(
-                    "UPDATE categories SET is_archived = 1 WHERE category_id = ?",(category_id,),)
+    async def archive_category(self, budget_id, category_id):
+        # Scoped by budget_id -- category_id alone is attacker-controlled callback
+        # data, and Telegram never verifies it came from a button we actually rendered.
+        async with self.conn.execute(
+                    "UPDATE categories SET is_archived = 1 WHERE category_id = ? AND budget_id = ?",
+                    (category_id, budget_id),) as cursor:
+            rowcount = cursor.rowcount
         await self.conn.commit()
-        return cursor.lastrowid
-    
-    async def dearchive_category(self,category_id):
-        cursor = await self.conn.execute(
-                    "UPDATE categories SET is_archived = 0 WHERE category_id = ?",(category_id,),)
-        await self.conn.commit()
-        return cursor.lastrowid
-    
-    async def rename_category(self,category_id,category_name):
-        cursor = await self.conn.execute(
-                    "UPDATE categories SET name = ? WHERE category_id = ?",(category_name,category_id,),)
-        await self.conn.commit()
-        return cursor.lastrowid
+        return rowcount
 
-    async def change_maximum(self,category_id,maximum):
-        cursor = await self.conn.execute(
-                    "UPDATE categories SET maximum = ? WHERE category_id = ?",(maximum,category_id,),)
+    async def dearchive_category(self, budget_id, category_id):
+        async with self.conn.execute(
+                    "UPDATE categories SET is_archived = 0 WHERE category_id = ? AND budget_id = ?",
+                    (category_id, budget_id),) as cursor:
+            rowcount = cursor.rowcount
         await self.conn.commit()
-        return cursor.lastrowid
-    
-    async def delete_category(self,category_id):
-        cursor = await self.conn.execute(
-                    "DELETE FROM categories WHERE category_id = ?",(category_id,),)
+        return rowcount
+
+    async def rename_category(self, budget_id, category_id, category_name):
+        async with self.conn.execute(
+                    "UPDATE categories SET name = ? WHERE category_id = ? AND budget_id = ?",
+                    (category_name, category_id, budget_id),) as cursor:
+            rowcount = cursor.rowcount
         await self.conn.commit()
-        return cursor.lastrowid
-    
+        return rowcount
+
+    async def change_maximum(self, budget_id, category_id, maximum):
+        async with self.conn.execute(
+                    "UPDATE categories SET maximum = ? WHERE category_id = ? AND budget_id = ?",
+                    (maximum, category_id, budget_id),) as cursor:
+            rowcount = cursor.rowcount
+        await self.conn.commit()
+        return rowcount
+
+    async def delete_category(self, budget_id, category_id):
+        async with self.conn.execute(
+                    "DELETE FROM categories WHERE category_id = ? AND budget_id = ?",
+                    (category_id, budget_id),) as cursor:
+            rowcount = cursor.rowcount
+        await self.conn.commit()
+        return rowcount
+
     async def set_timezone(self,user_id, zone):
-        cursor = await self.conn.execute(
-                    "UPDATE users SET timezone = ? WHERE user_id = ?",(zone,user_id,),)
+        async with self.conn.execute(
+                    "UPDATE users SET timezone = ? WHERE user_id = ?",(zone,user_id,),) as cursor:
+            rowcount = cursor.rowcount
         await self.conn.commit()
-        return cursor.lastrowid
+        return rowcount
 
     async def set_nickname(self,user_id, nickname):
-        cursor = await self.conn.execute(
-                    "UPDATE users SET nickname = ? WHERE user_id = ?",(nickname,user_id,),)
+        async with self.conn.execute(
+                    "UPDATE users SET nickname = ? WHERE user_id = ?",(nickname,user_id,),) as cursor:
+            rowcount = cursor.rowcount
         await self.conn.commit()
-        return cursor.lastrowid
+        return rowcount
 
-    async def list_recent_transactions(self, budget_id, limit, offset, kind=None):
+    async def list_recent_transactions(self, budget_id, limit, offset, kind=None, added_by=None, sort="id"):
         query = """SELECT e.expense_id, e.date, e.amount, e.kind, e.added_by,
                           COALESCE(c.name, 'Без категории') AS category_name,
                           COALESCE(u.nickname, '') AS nickname
                    FROM expenses e
-                   LEFT JOIN categories c ON c.category_id = e.category_id
+                   LEFT JOIN categories c ON c.category_id = e.category_id AND c.budget_id = e.budget_id
                    LEFT JOIN users u ON u.user_id = e.added_by
                    WHERE e.budget_id = ?"""
         params = [budget_id]
         if kind is not None:
             query += " AND e.kind = ?"
             params.append(kind)
-        query += " ORDER BY e.expense_id DESC LIMIT ? OFFSET ?"
+        if added_by is not None:
+            query += " AND e.added_by = ?"
+            params.append(added_by)
+        query += " ORDER BY " + HISTORY_SORT_ORDERS.get(sort, HISTORY_SORT_ORDERS["id"])
+        query += " LIMIT ? OFFSET ?"
         params += [limit, offset]
         async with self.conn.execute(query, params) as cursor:
             return await cursor.fetchall()
 
-    async def count_transactions(self, budget_id, kind=None):
+    async def count_transactions(self, budget_id, kind=None, added_by=None):
         query = "SELECT COUNT(*) AS c FROM expenses WHERE budget_id = ?"
         params = [budget_id]
         if kind is not None:
             query += " AND kind = ?"
             params.append(kind)
+        if added_by is not None:
+            query += " AND added_by = ?"
+            params.append(added_by)
         async with self.conn.execute(query, params) as cursor:
             row = await cursor.fetchone()
         return row["c"] if row else 0
 
-
-import shutil
-from pathlib import Path
-from datetime import datetime
 
 async def backup_db(db: Database, backup_dir: Path, keep: int = 14):
     backup_dir.mkdir(parents=True, exist_ok=True)

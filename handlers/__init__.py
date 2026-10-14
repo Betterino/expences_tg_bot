@@ -1,5 +1,6 @@
-from . import common, expenses, stats, edit, onboard, settings, history
 from sandbox.handlers import router as sandbox_router  # sandbox
+
+from . import common, edit, expenses, fallback, history, onboard, settings, stats
 
 routers = (
     common.router,
@@ -9,5 +10,6 @@ routers = (
     settings.router,
     history.router,
     sandbox_router,  # sandbox
-    edit.router,  # last: has an unconditional callback_query catch-all that would swallow later routers' events
+    edit.router,
+    fallback.router,  # last: unconditional callback_query catch-all that would swallow later routers' events
 )

@@ -6,10 +6,13 @@ exists to be iterated on.
 """
 from html.parser import HTMLParser
 
+from aiogram import Dispatcher
 from aiogram.types import InputRichMessage
 
 import handlers
+import sandbox.handlers as sandbox_handlers
 from callback import NavCB
+from db import Database
 from keyboards import settings_kb
 from sandbox.callback import SandboxCB
 from sandbox.fixtures import FIXTURES
@@ -17,7 +20,7 @@ from sandbox.handlers import MESSAGE_LIMIT, RICH_LIMIT, send_copy, show_variant
 from sandbox.handlers import router as sandbox_router
 from sandbox.keyboard import SOURCES, next_source, sandbox_kb
 from sandbox.variants import VARIANTS, get, render
-from tests.fakes import FakeCallbackQuery, find_button, unpack_callback_data
+from tests.fakes import FakeCallbackQuery, dispatch_traceback, find_button, unpack_callback_data
 from texts import Buttons
 
 # Подмножество HTML, которое понимает Telegram.
@@ -236,9 +239,25 @@ def test_source_button_cycles_through_every_source() -> None:
     assert set(seen) == set(SOURCES) and seen[0] == seen[-1]
 
 
-def test_settings_menu_offers_the_sandbox() -> None:
-    button = find_button(settings_kb(), Buttons.SANDBOX)
+def test_settings_menu_offers_the_sandbox_only_to_admins() -> None:
+    """SEC-8: the sandbox is a development tool exposing internals (variant keys,
+    character budgets) -- hidden from regular users, shown when is_admin=True."""
+    assert find_button(settings_kb(), Buttons.SANDBOX) is None
+    assert find_button(settings_kb(is_admin=False), Buttons.SANDBOX) is None
+    button = find_button(settings_kb(is_admin=True), Buttons.SANDBOX)
     assert button is not None and NavCB.unpack(button.callback_data).to == "sandbox"
+
+
+def test_sandbox_router_rejects_non_admins(monkeypatch) -> None:
+    """SEC-8: even a crafted callback_data (button was never rendered for this user)
+    must not reach a sandbox handler when ADMIN_ID doesn't match -- or isn't set."""
+    callback = FakeCallbackQuery(user_id=222)
+    monkeypatch.setattr(sandbox_handlers, "ADMIN_ID", None)
+    assert sandbox_handlers._is_admin(callback) is False
+    monkeypatch.setattr(sandbox_handlers, "ADMIN_ID", 111)  # some other user
+    assert sandbox_handlers._is_admin(callback) is False
+    monkeypatch.setattr(sandbox_handlers, "ADMIN_ID", 222)
+    assert sandbox_handlers._is_admin(callback) is True
 
 
 def test_sandbox_router_precedes_edit_router() -> None:
@@ -275,67 +294,21 @@ async def test_copy_sends_a_new_message_instead_of_editing() -> None:
     callback.message.answer.assert_awaited_once()
     callback.message.edit_text.assert_not_awaited()
     callback.answer.assert_awaited_once()
-    print(f"sandbox: {len(VARIANTS)} вариантов x {len(FIXTURES)} наборов ✓")
 
 
-async def test_sandbox_button_is_not_swallowed_by_edits_catch_all() -> None:
+async def test_sandbox_button_is_not_swallowed_by_edits_catch_all(
+    db: Database, dispatcher: Dispatcher, monkeypatch
+) -> None:
     """Same technique as tests/test_routing.py: push a real event through the actual
     Dispatcher chain. Calling handlers directly cannot catch an earlier router's
     catch-all shadowing them; only a full-stack dispatch can."""
-    import tempfile
-    import traceback
-    from pathlib import Path
+    # SEC-8: sandbox_router.callback_query.filter(_is_admin) blocks everyone by default --
+    # this test is about routing order, not the gate, so admit user 222 for its duration.
+    monkeypatch.setattr(sandbox_handlers, "ADMIN_ID", 222)
+    await db.ensure_user(222)
+    budget_id = await db.create_budget(222)
 
-    from aiogram import Dispatcher
-    from aiogram.types import CallbackQuery, Chat, Message, User
-
-    from db import Database
-    from handlers import routers
-
-    class _FakeState:
-        async def get_state(self):
-            return None
-
-        async def get_data(self):
-            return {}
-
-    user = User(id=222, is_bot=False, first_name="t")
-    message = Message(message_id=1, date=0, chat=Chat(id=1, type="private"))
-    callback = CallbackQuery(
-        id="1", from_user=user, chat_instance="x", data="nav:sandbox:expense", message=message
+    tb_text = await dispatch_traceback(
+        dispatcher, NavCB(to="sandbox").pack(), 222, db=db, budget_id=budget_id, tz="Europe/Moscow"
     )
-
-    with tempfile.TemporaryDirectory() as tmp:
-        async with Database(Path(tmp) / "test.db") as db:
-            await db.ensure_user(222)
-            budget_id = await db.create_budget(222)
-            # Router.parent_router is a one-time assignment -- aiogram refuses to
-            # attach the same Router to a second Dispatcher. tests/test_routing.py
-            # runs first (alphabetically) and already claimed handlers.routers, so
-            # reuse whatever they are mounted on instead of building a rival chain.
-            root = sandbox_router
-            while root.parent_router is not None:
-                root = root.parent_router
-            if isinstance(root, Dispatcher):
-                dp = root
-            else:
-                dp = Dispatcher()
-                for r in routers:
-                    dp.include_router(r)
-            try:
-                await dp.propagate_event(
-                    "callback_query",
-                    callback,
-                    db=db,
-                    budget_id=budget_id,
-                    tz="Europe/Moscow",
-                    state=_FakeState(),
-                    user={"user_id": 222},
-                )
-            except RuntimeError as error:
-                # edit_text() without a live Bot always fails; the traceback's origin is
-                # what proves which handler actually ran.
-                assert "mount" in str(error), error
-                assert "sandbox/handlers.py" in traceback.format_exc(), traceback.format_exc()
-            else:
-                raise AssertionError("ожидали RuntimeError от edit_text без живого Bot")
+    assert "sandbox/handlers.py" in tb_text, tb_text
