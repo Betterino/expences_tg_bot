@@ -1,4 +1,2 @@
 -r requirements.txt
 ruff
-pytest>=9
-pytest-asyncio>=1.0

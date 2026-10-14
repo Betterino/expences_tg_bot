@@ -1,3 +1,6 @@
 aiogram==3.30.0
 python-dotenv
 aiosqlite
+# bot.py runs the test suite before polling (preflight.py) -- no pytest, no start
+pytest>=9
+pytest-asyncio>=1.0
