@@ -1,8 +1,8 @@
 
-import richtext
-from callback import NavCB
-from db import Database
-from handlers.history import render_history_screen
+from expenses_bot.db import Database
+from expenses_bot.handlers.history import render_history_screen
+from expenses_bot.ui import richtext
+from expenses_bot.ui.callback import NavCB
 from tests.fakes import FakeCallbackQuery, rich_blocks, unpack_callback_data
 
 

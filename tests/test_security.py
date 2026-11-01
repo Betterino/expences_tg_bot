@@ -4,9 +4,8 @@ rendered. These tests craft cross-budget ids and out-of-domain enum values the w
 attacker would (by hand, not by tapping a real button) and assert the boundary holds.
 """
 
-from callback import CategoryCB, HistoryPageCB, MonthCB, StatsCB, TzCB
-from db import Database
-from handlers.edit import (
+from expenses_bot.db import Database
+from expenses_bot.handlers.edit import (
     CategoryMax,
     CategoryName,
     archive_category,
@@ -15,12 +14,13 @@ from handlers.edit import (
     input_category_max,
     input_category_name,
 )
-from handlers.expenses import amount_entered
-from handlers.history import history_page
-from handlers.settings import tz_chosen
-from handlers.stats import StatsRange, display_page_stats, input_month, input_year
+from expenses_bot.handlers.expenses import amount_entered
+from expenses_bot.handlers.history import history_page
+from expenses_bot.handlers.settings import tz_chosen
+from expenses_bot.handlers.stats import StatsRange, display_page_stats, input_month, input_year
+from expenses_bot.ui.callback import CategoryCB, HistoryPageCB, MonthCB, StatsCB, TzCB
+from expenses_bot.ui.texts import Errors
 from tests.fakes import FakeCallbackQuery, FakeMessage, make_callback_answer, make_state
-from texts import Errors
 
 
 async def _two_budgets(db: Database):

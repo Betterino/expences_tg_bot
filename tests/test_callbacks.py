@@ -12,20 +12,20 @@ full-stack dispatch test can't observe the double-answer either way.
 """
 from pathlib import Path
 
-from handlers import routers
+from expenses_bot.handlers import routers
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_callback_answer_middleware_is_attached() -> None:
-    source = (REPO_ROOT / "bot.py").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "expenses_bot" / "app.py").read_text(encoding="utf-8")
     assert "dp.callback_query.middleware(CallbackAnswerMiddleware())" in source
 
 
 def test_no_production_handler_calls_callback_answer_directly() -> None:
-    """sandbox/ is explicitly exempt -- its handlers predate PAT-1 and the plan for
+    """expenses_bot/sandbox/ is explicitly exempt -- its handlers predate PAT-1 and the plan for
     this pass says to leave the sandbox alone."""
-    handlers_dir = REPO_ROOT / "handlers"
+    handlers_dir = REPO_ROOT / "expenses_bot" / "handlers"
     for path in handlers_dir.glob("*.py"):
         text = path.read_text(encoding="utf-8")
         assert "callback.answer(" not in text, path

@@ -1,4 +1,4 @@
-from db import Database
+from expenses_bot.db import Database
 
 
 async def test_migrations_idempotent(tmp_path) -> None:

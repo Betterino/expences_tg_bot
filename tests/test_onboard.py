@@ -1,8 +1,8 @@
 
-from db import Database
-from handlers.onboard import JoinBudget, join_code_budget, rotate_code
+from expenses_bot.db import Database
+from expenses_bot.handlers.onboard import JoinBudget, join_code_budget, rotate_code
+from expenses_bot.ui.texts import Onboarding
 from tests.fakes import FakeCallbackQuery, FakeMessage, make_state
-from texts import Onboarding
 
 
 async def test_invalid_code_replies_without_editing(db: Database) -> None:

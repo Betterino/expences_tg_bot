@@ -1,4 +1,4 @@
-"""Keeps postmortems/2026-10-05-add-expense-mode-keyerror.md from coming back.
+"""Keeps docs/postmortems/2026-10-05-add-expense-mode-keyerror.md from coming back.
 
 FSM data written by one update can be gone (state.clear() on every "Меню" tap) by the
 time a later update reads it, so a bare data["key"] on `await state.get_data()` is a
@@ -14,7 +14,7 @@ import ast
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CHECKED_DIRS = ("handlers", "sandbox")
+CHECKED_DIRS = ("expenses_bot/handlers", "expenses_bot/sandbox")
 
 
 def _is_raw_get_data(node: ast.AST) -> bool:

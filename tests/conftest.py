@@ -3,8 +3,8 @@ any test whose parameter has the same name -- no import needed in the test modul
 import pytest
 from aiogram import Dispatcher
 
-from db import Database
-from handlers import routers
+from expenses_bot.db import Database
+from expenses_bot.handlers import routers
 
 
 @pytest.fixture
@@ -18,7 +18,7 @@ async def db(tmp_path) -> Database:
 
 @pytest.fixture(scope="session")
 def dispatcher() -> Dispatcher:
-    """handlers.routers mounted once, in the order bot.py mounts them.
+    """handlers.routers mounted once, in the order app.main() mounts them.
 
     Router.parent_router is a one-time assignment -- aiogram refuses to attach the same
     Router to a second Dispatcher in one process. Session scope builds the chain once

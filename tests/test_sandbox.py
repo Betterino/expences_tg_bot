@@ -9,19 +9,19 @@ from html.parser import HTMLParser
 from aiogram import Dispatcher
 from aiogram.types import InputRichMessage
 
-import handlers
-import sandbox.handlers as sandbox_handlers
-from callback import NavCB
-from db import Database
-from keyboards import settings_kb
-from sandbox.callback import SandboxCB
-from sandbox.fixtures import FIXTURES
-from sandbox.handlers import MESSAGE_LIMIT, RICH_LIMIT, send_copy, show_variant
-from sandbox.handlers import router as sandbox_router
-from sandbox.keyboard import SOURCES, next_source, sandbox_kb
-from sandbox.variants import VARIANTS, get, render
+import expenses_bot.sandbox.handlers as sandbox_handlers
+from expenses_bot import handlers
+from expenses_bot.db import Database
+from expenses_bot.sandbox.callback import SandboxCB
+from expenses_bot.sandbox.fixtures import FIXTURES
+from expenses_bot.sandbox.handlers import MESSAGE_LIMIT, RICH_LIMIT, send_copy, show_variant
+from expenses_bot.sandbox.handlers import router as sandbox_router
+from expenses_bot.sandbox.keyboard import SOURCES, next_source, sandbox_kb
+from expenses_bot.sandbox.variants import VARIANTS, get, render
+from expenses_bot.ui.callback import NavCB
+from expenses_bot.ui.keyboards import settings_kb
+from expenses_bot.ui.texts import Buttons
 from tests.fakes import FakeCallbackQuery, dispatch_traceback, find_button, unpack_callback_data
-from texts import Buttons
 
 # Подмножество HTML, которое понимает Telegram.
 ALLOWED_TAGS = {"b", "i", "u", "s", "code", "pre", "blockquote", "tg-spoiler", "a"}

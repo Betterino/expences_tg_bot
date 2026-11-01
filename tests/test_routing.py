@@ -1,5 +1,5 @@
 """Full-stack routing tests: feed a real event through the actual Dispatcher/router chain
-(handlers.routers, in the exact order bot.py registers them) to catch handlers being shadowed
+(handlers.routers, in the exact order app.main() registers them) to catch handlers being shadowed
 by an earlier router's catch-all — a class of bug that calling handler functions directly
 (as the other tests/test_*.py files do) cannot catch.
 
@@ -10,9 +10,9 @@ catch-all always matches first and stops propagation.
 """
 from aiogram import Dispatcher
 
-from callback import NavCB
-from db import Database
-from handlers import routers
+from expenses_bot.db import Database
+from expenses_bot.handlers import routers
+from expenses_bot.ui.callback import NavCB
 from tests.fakes import dispatch_traceback
 
 

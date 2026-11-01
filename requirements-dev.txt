@@ -1,2 +1,5 @@
 -r requirements.txt
+# Tests run at image build (Dockerfile's test stage), not at bot start -- dev-only again.
+pytest>=9
+pytest-asyncio>=1.0
 ruff

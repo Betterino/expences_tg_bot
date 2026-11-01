@@ -1,8 +1,8 @@
 """Row-count regression guard for the keyboard layouts compacted via .adjust().
 Catches silent layout regressions (e.g. someone reverting .adjust(2) to .adjust(1))
 without needing a live bot to render anything."""
-from callback import HistoryPageCB, NavCB
-from keyboards import confirm, edit_archived_kb, edit_kb, history_kb, main_menu, settings_kb
+from expenses_bot.ui.callback import HistoryPageCB, NavCB
+from expenses_bot.ui.keyboards import confirm, edit_archived_kb, edit_kb, history_kb, main_menu, settings_kb
 from tests.fakes import unpack_callback_data
 
 

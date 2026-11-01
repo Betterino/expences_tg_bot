@@ -5,14 +5,14 @@ The discriminating fixture: insert a back-dated row LAST, so id order and date o
 disagree. Without that, sort tests would pass vacuously.
 """
 
-import richtext
-from callback import HistoryPageCB
-from constants import HISTORY_CYCLES
-from db import Database
-from handlers.history import history_page, open_history, render_history_screen
-from keyboards import history_kb
+from expenses_bot.constants import HISTORY_CYCLES
+from expenses_bot.db import Database
+from expenses_bot.handlers.history import history_page, open_history, render_history_screen
+from expenses_bot.ui import richtext
+from expenses_bot.ui.callback import HistoryPageCB
+from expenses_bot.ui.keyboards import history_kb
+from expenses_bot.ui.views import history_view
 from tests.fakes import FakeCallbackQuery, rich_blocks, unpack_callback_data
-from views import history_view
 
 
 async def _seed(db: Database):
@@ -132,7 +132,7 @@ def test_history_cycles_are_closed() -> None:
 
 
 async def test_open_history_and_history_page_render(db: Database) -> None:
-    # Answering the callback query is CallbackAnswerMiddleware's job now (bot.py),
+    # Answering the callback query is CallbackAnswerMiddleware's job now (app.main()),
     # not the handler's -- see tests/test_callbacks.py for that guarantee.
     budget_id, _ = await _seed(db)
 

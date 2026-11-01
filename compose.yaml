@@ -1,0 +1,27 @@
+services:
+  bot:
+    build:
+      context: .
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    restart: unless-stopped
+    # tini as PID 1: forwards SIGTERM to python. A bare PID 1 ignores signals it has no
+    # handler for, so before aiogram installs its own, `docker compose stop` would hang
+    # 10 s and end in SIGKILL.
+    init: true
+    # API_KEY, ADMIN_ID, LOG_MESSAGE_TEXT -- see .env.example. Injected as environment
+    # variables; the .env file itself never enters the image (.dockerignore).
+    env_file: .env
+    environment:
+      TZ: Europe/Chisinau
+    # Database, backups and the bot's own log files live on the host, so they survive
+    # `docker compose down` and image rebuilds.
+    volumes:
+      - ./data:/app/data
+    # Docker keeps stdout per container forever by default -- cap it.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

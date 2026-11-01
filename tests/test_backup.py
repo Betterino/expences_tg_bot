@@ -1,4 +1,4 @@
-from db import Database, backup_db
+from expenses_bot.db import Database, backup_db
 
 
 async def test_backup(tmp_path) -> None:

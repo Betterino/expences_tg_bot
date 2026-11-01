@@ -1,8 +1,8 @@
 
-import richtext
-from callback import MonthCB
-from db import Database
-from handlers.stats import input_month, input_year
+from expenses_bot.db import Database
+from expenses_bot.handlers.stats import input_month, input_year
+from expenses_bot.ui import richtext
+from expenses_bot.ui.callback import MonthCB
 from tests.fakes import FakeCallbackQuery, FakeMessage, make_callback_answer, make_state, rich_blocks
 
 

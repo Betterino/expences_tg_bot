@@ -1,5 +1,5 @@
 
-from db import Database
+from expenses_bot.db import Database
 
 
 async def test_db(db: Database) -> None:

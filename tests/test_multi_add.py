@@ -1,7 +1,6 @@
 
-from callback import AddCB, CategoryCB, NavCB
-from db import Database
-from handlers.expenses import (
+from expenses_bot.db import Database
+from expenses_bot.handlers.expenses import (
     AddExpense,
     add_again,
     amount_entered,
@@ -9,6 +8,8 @@ from handlers.expenses import (
     choose_add_date,
     data_entered,
 )
+from expenses_bot.ui.callback import AddCB, CategoryCB, NavCB
+from expenses_bot.ui.texts import Errors
 from tests.fakes import (
     FakeCallbackQuery,
     FakeMessage,
@@ -16,7 +17,6 @@ from tests.fakes import (
     make_state,
     unpack_callback_data,
 )
-from texts import Errors
 
 
 async def test_amount_entered_keeps_date_and_offers_add_again(db: Database) -> None:

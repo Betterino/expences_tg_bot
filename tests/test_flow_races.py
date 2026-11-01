@@ -1,23 +1,21 @@
 """Multi-step flows survive the three ways FSM data goes missing between two updates
-(postmortems/2026-10-05-add-expense-mode-keyerror.md):
+(docs/postmortems/2026-10-05-add-expense-mode-keyerror.md):
 
   (A) concurrency -- two updates of one user interleaving. Closed by
-      SimpleEventIsolation in bot.py; pinned here statically, since bot.py can't be
-      imported in tests (it reads .env and builds a Bot).
+      SimpleEventIsolation in expenses_bot/app.py; checked on the real Dispatcher
+      object, since app.py builds its Bot inside main() and imports without a token.
   (B) a state.clear() ("Меню", /cancel, archive...) between the writer and the reader,
       then a stale button tap or typed reply. Each chain below runs writer -> clear ->
       reader and expects the recovery path, not an exception.
   (C) hand-crafted callback data -- values no rendered button ever carried.
 """
-import ast
-from pathlib import Path
 
+from aiogram.fsm.storage.memory import SimpleEventIsolation
 from aiogram.types import Chat, InaccessibleMessage
 
-from callback import AddCB, CategoryCB, CatPageCB, NavCB
-from db import Database
-from handlers.common import display_pages_cat
-from handlers.edit import (
+from expenses_bot.db import Database
+from expenses_bot.handlers.common import display_pages_cat
+from expenses_bot.handlers.edit import (
     delete_category,
     edit_categories_arch,
     edit_categories_cat,
@@ -29,8 +27,10 @@ from handlers.edit import (
     input_max_create,
     rename_category,
 )
-from handlers.expenses import add_again, amount_entered, category_chosen, data_entered, start_add
-from handlers.screens import show_menu
+from expenses_bot.handlers.expenses import add_again, amount_entered, category_chosen, data_entered, start_add
+from expenses_bot.handlers.screens import show_menu
+from expenses_bot.ui.callback import AddCB, CategoryCB, CatPageCB, NavCB
+from expenses_bot.ui.texts import Errors
 from tests.fakes import (
     FakeCallbackQuery,
     FakeMessage,
@@ -38,9 +38,7 @@ from tests.fakes import (
     make_state,
     unpack_callback_data,
 )
-from texts import Errors
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
 TZ = "Europe/Chisinau"
 
 
@@ -66,13 +64,9 @@ async def _assert_expired_by_callback(callback: FakeCallbackQuery, callback_answ
 # --- (A) -----------------------------------------------------------------------------
 
 def test_dispatcher_isolates_events_per_user() -> None:
-    tree = ast.parse((REPO_ROOT / "bot.py").read_text(encoding="utf-8"))
-    calls = [
-        node for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "Dispatcher"
-    ]
-    assert len(calls) == 1
-    assert "events_isolation" in {kw.arg for kw in calls[0].keywords}
+    from expenses_bot.app import dp
+
+    assert isinstance(dp.fsm.events_isolation, SimpleEventIsolation)
 
 
 # --- (B) add expense ---------------------------------------------------------------------

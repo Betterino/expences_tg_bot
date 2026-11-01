@@ -1,6 +1,6 @@
 import pathlib
 
-from utils import clean_user_text, format_money, parse_amount, parse_amount_terms, parse_date
+from expenses_bot.utils import clean_user_text, format_money, parse_amount, parse_amount_terms, parse_date
 
 
 def test_utils() -> None:
@@ -69,7 +69,7 @@ def test_no_handler_calls_html_escape_directly() -> None:
     """SEC-6: clean_user_text() is the one place free-text user input gets escaped --
     a call site reaching for html.escape() directly would bypass its length-measured-
     against-visible-text fix (BUG-8) and its single, consistent quote= policy."""
-    handlers_dir = pathlib.Path(__file__).resolve().parent.parent / "handlers"
+    handlers_dir = pathlib.Path(__file__).resolve().parent.parent / "expenses_bot" / "handlers"
     for path in handlers_dir.glob("*.py"):
         text = path.read_text(encoding="utf-8")
         assert "html.escape" not in text, path

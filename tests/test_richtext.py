@@ -4,11 +4,11 @@ Mirrors tests/test_sandbox.py's invariants (block/column/text limits, exactly on
 InputRichMessage content field) but targets the production views instead of the
 sandbox's style gallery -- these are the three screens that actually ship.
 """
-import richtext
-from constants import VERSION
-from sandbox.fixtures import CATEGORY_ROWS, FIXTURES, HISTORY_ROWS
-from texts import About
-from views import about_view, categories_view, history_view, menu_view, stats_view
+from expenses_bot.constants import VERSION
+from expenses_bot.sandbox.fixtures import CATEGORY_ROWS, FIXTURES, HISTORY_ROWS
+from expenses_bot.ui import richtext
+from expenses_bot.ui.texts import About
+from expenses_bot.ui.views import about_view, categories_view, history_view, menu_view, stats_view
 
 
 def _all_screens():
@@ -78,7 +78,7 @@ def test_history_view_falls_back_for_missing_nickname_and_category() -> None:
 
 
 def test_history_view_empty_shows_placeholder() -> None:
-    from texts import History
+    from expenses_bot.ui.texts import History
 
     blocks = history_view([], page=1, max_page=1)
     text = "".join(richtext.walk_text(blocks))

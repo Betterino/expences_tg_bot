@@ -1,10 +1,10 @@
 
-from callback import NavCB
-from db import Database
-from handlers.edit import choose_edit_categories, input_category_name
-from handlers.screens import render_categories_screen
+from expenses_bot.db import Database
+from expenses_bot.handlers.edit import choose_edit_categories, input_category_name
+from expenses_bot.handlers.screens import render_categories_screen
+from expenses_bot.ui.callback import NavCB
+from expenses_bot.ui.texts import Categories, Errors
 from tests.fakes import FakeCallbackQuery, FakeMessage, make_state
-from texts import Categories, Errors
 
 
 async def test_dearchive_respects_kind(db: Database) -> None:

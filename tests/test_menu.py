@@ -4,14 +4,14 @@ The parity test is the point of the whole design: MENU_HELP is keyed on Buttons.
 so adding a button to main_menu() without a matching help line fails loudly here
 instead of silently shipping an unexplained button.
 """
-import richtext
-from callback import NavCB
-from constants import VERSION
-from handlers.common import about_screen, cancel, handle_start, main_menu_handler
-from keyboards import main_menu
+from expenses_bot.constants import VERSION
+from expenses_bot.handlers.common import about_screen, cancel, handle_start, main_menu_handler
+from expenses_bot.ui import richtext
+from expenses_bot.ui.callback import NavCB
+from expenses_bot.ui.keyboards import main_menu
+from expenses_bot.ui.texts import Screens
+from expenses_bot.ui.views import menu_view
 from tests.fakes import FakeCallbackQuery, FakeMessage, make_state, rich_blocks
-from texts import Screens
-from views import menu_view
 
 
 def _button_texts(markup) -> set[str]:

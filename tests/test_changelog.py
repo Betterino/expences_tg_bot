@@ -3,8 +3,8 @@ version bump without a changelog entry (or vice versa) fails the suite instead o
 quietly drifting."""
 from pathlib import Path
 
-from constants import VERSION
-from texts import About
+from expenses_bot.constants import VERSION
+from expenses_bot.ui.texts import About
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

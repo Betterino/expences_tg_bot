@@ -1,6 +1,6 @@
 
-from db import Database
-from handlers.settings import Settings, nickname_entered
+from expenses_bot.db import Database
+from expenses_bot.handlers.settings import Settings, nickname_entered
 from tests.fakes import FakeMessage, make_state
 
 

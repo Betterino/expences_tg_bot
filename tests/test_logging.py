@@ -1,4 +1,4 @@
-"""describe_update() is the one line logged for every in/out update (bot.py's
+"""describe_update() is the one line logged for every in/out update (app.py's
 LoggingMiddleware) and fed to @dp.error() on crashes. These tests pin its format
 against real aiogram Update objects so a refactor can't silently drop the user/payload."""
 import logging
@@ -8,7 +8,7 @@ from pathlib import Path
 
 from aiogram.types import CallbackQuery, Chat, Message, Update, User
 
-from logging_utils import MAX_TEXT_LEN, describe_update, setup_logging
+from expenses_bot.logging_utils import MAX_TEXT_LEN, describe_update, setup_logging
 
 
 def _message_update(text: str, update_id: int = 1) -> Update:
@@ -28,7 +28,7 @@ def _callback_update(data: str, update_id: int = 2) -> Update:
 
 def test_message_update_hides_text_by_default() -> None:
     """SEC-5: message bodies are personal data -- only their length is logged
-    unless the caller opts in via log_text=True (LOG_MESSAGE_TEXT=1 in bot.py)."""
+    unless the caller opts in via log_text=True (LOG_MESSAGE_TEXT=1, read by config.py)."""
     line = describe_update(_message_update("150 продукты"))
     assert "111" in line
     assert "vasya" in line
