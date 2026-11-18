@@ -61,7 +61,8 @@ def clean_user_text(text: str | None, limit: int) -> str | None:
 MAX_TERM = 10**11
 
 
-def _parse_term(text: str) -> int | None:
+def parse_term(text: str) -> int | None:
+    """One amount ("12", "12,5", "12.50") as kopeks; also used by importer.py."""
     try:
         text = text.replace(".",",")
         values = text.split(",")
@@ -98,7 +99,7 @@ def parse_amount_terms(text: str) -> list[int] | None:
         parts = parts[1:]
     if any(p == "" for p in parts):
         return None
-    terms = [_parse_term(p) for p in parts]
+    terms = [parse_term(p) for p in parts]
     if any(t is None for t in terms):
         return None
     return terms

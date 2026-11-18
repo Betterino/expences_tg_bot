@@ -1,6 +1,6 @@
 from expenses_bot.ui.texts import Buttons
 
-VERSION = "1.7.0"
+VERSION = "1.8.0"
 CHANGELOG_URL = ""  # заполняется вручную ссылкой на хостинг CHANGELOG.md
 
 PER_PAGE = 6

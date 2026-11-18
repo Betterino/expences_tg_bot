@@ -8,6 +8,7 @@ from expenses_bot.ui.callback import (
     CategoryCB,
     CatPageCB,
     HistoryPageCB,
+    ImportCB,
     MonthCB,
     NavCB,
     OnboardCB,
@@ -157,6 +158,7 @@ def main_menu():
     builder.button(text=Buttons.EDIT_INCOME_CATEGORIES, callback_data=NavCB(to="edit", kind="income"))
     builder.button(text=Buttons.SETTINGS,callback_data=NavCB(to="set"))
     builder.button(text=Buttons.CODE,callback_data=NavCB(to="code"))
+    builder.button(text=Buttons.IMPORT,callback_data=NavCB(to="import"))
     builder.button(text=Buttons.ABOUT,callback_data=NavCB(to="about"))
     builder.adjust(2)
     return builder.as_markup()
@@ -201,6 +203,27 @@ def added_confirm_kb(kind="expense",mode="today"):
     builder.button(text=Buttons.ADD_OTHER_DATE,callback_data=NavCB(to=kind))
     builder.button(text=Buttons.MENU,callback_data=NavCB(to="menu"))
     builder.adjust(1)
+    return builder.as_markup()
+
+def import_preview_kb():
+    builder = InlineKeyboardBuilder()
+    builder.button(text=Buttons.IMPORT_COMMIT, callback_data=ImportCB(action="commit"))
+    builder.button(text=Buttons.CANCEL, callback_data=NavCB(to="menu"))
+    builder.adjust(2)
+    return builder.as_markup()
+
+def import_done_kb(import_id: int):
+    builder = InlineKeyboardBuilder()
+    builder.button(text=Buttons.IMPORT_UNDO, callback_data=ImportCB(action="undo_ask", id=import_id))
+    builder.button(text=Buttons.MENU, callback_data=NavCB(to="menu"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+def import_undo_confirm_kb(import_id: int):
+    builder = InlineKeyboardBuilder()
+    builder.button(text=Buttons.YES, callback_data=ImportCB(action="undo", id=import_id))
+    builder.button(text=Buttons.NO, callback_data=NavCB(to="menu"))
+    builder.adjust(2)
     return builder.as_markup()
 
 def to_menu():

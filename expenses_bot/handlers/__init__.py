@@ -1,10 +1,11 @@
 from expenses_bot.sandbox.handlers import router as sandbox_router  # sandbox
 
-from . import common, edit, expenses, fallback, history, onboard, settings, stats
+from . import common, edit, expenses, fallback, history, importer, onboard, settings, stats
 
 routers = (
     common.router,
     stats.router,
+    importer.router,  # before expenses: F.document must win over waiting_amount
     expenses.router,
     onboard.router,
     settings.router,

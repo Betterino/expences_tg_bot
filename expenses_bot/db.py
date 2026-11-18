@@ -77,6 +77,20 @@ MIGRATIONS = [
     """,
     # версия 3
     "ALTER TABLE users ADD COLUMN nickname TEXT NOT NULL DEFAULT '';",
+    # версия 4: импорт из файла. Пачка = строка в imports; её строки в expenses ссылаются
+    # на неё с ON DELETE CASCADE, так что "Отменить импорт" -- один DELETE FROM imports.
+    # UNIQUE(budget_id, digest) ловит повторную загрузку того же содержимого.
+    """
+    CREATE TABLE IF NOT EXISTS imports(
+        import_id INTEGER PRIMARY KEY,
+        budget_id INTEGER NOT NULL REFERENCES budgets(budget_id) ON DELETE CASCADE,
+        added_by INTEGER REFERENCES users(user_id),
+        digest TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        row_count INTEGER NOT NULL,
+        UNIQUE(budget_id, digest));
+    ALTER TABLE expenses ADD COLUMN import_id INTEGER REFERENCES imports(import_id) ON DELETE CASCADE;
+    """,
 ]
 
 
@@ -413,6 +427,60 @@ class Database:
         async with self.conn.execute(query, params) as cursor:
             row = await cursor.fetchone()
         return row["c"] if row else 0
+
+
+    async def find_import(self, budget_id, digest):
+        async with self.conn.execute(
+            "SELECT import_id, created_at, row_count FROM imports WHERE budget_id = ? AND digest = ?",
+            (budget_id, digest),
+        ) as cursor:
+            return await cursor.fetchone()
+
+    async def create_import(self, budget_id, user_id, digest, rows) -> int | None:
+        """All rows of one import in a single transaction, one commit.
+
+        executemany() sends every row through one prepared statement, and the single
+        commit means one fsync instead of one per row (add_expense commits each time).
+        It also makes the import atomic: either the whole file lands or nothing does.
+        Returns None if this budget already has an import with the same digest."""
+        try:
+            async with self.conn.execute(
+                "INSERT INTO imports (budget_id, added_by, digest, created_at, row_count) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (budget_id, user_id, digest, datetime.now().isoformat(timespec="seconds"), len(rows)),
+            ) as cursor:
+                import_id = cursor.lastrowid
+            await self.conn.executemany(
+                "INSERT INTO expenses (budget_id, added_by, category_id, amount, date, kind, import_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [(budget_id, user_id, r.category_id, r.amount, r.date, r.kind, import_id) for r in rows],
+            )
+        except aiosqlite.IntegrityError:
+            await self.conn.rollback()
+            return None
+        except BaseException:
+            await self.conn.rollback()
+            raise
+        await self.conn.commit()
+        return import_id
+
+    async def get_import(self, budget_id, import_id):
+        async with self.conn.execute(
+            "SELECT import_id, row_count FROM imports WHERE import_id = ? AND budget_id = ?",
+            (import_id, budget_id),
+        ) as cursor:
+            return await cursor.fetchone()
+
+    async def delete_import(self, budget_id, import_id):
+        # Scoped by budget_id: import_id comes off a callback button (SEC-2 threat model).
+        # Its expenses rows go with it through ON DELETE CASCADE.
+        async with self.conn.execute(
+            "DELETE FROM imports WHERE import_id = ? AND budget_id = ?",
+            (import_id, budget_id),
+        ) as cursor:
+            rowcount = cursor.rowcount
+        await self.conn.commit()
+        return rowcount
 
 
 async def backup_db(db: Database, backup_dir: Path, keep: int = 14):

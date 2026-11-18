@@ -42,6 +42,10 @@ class NavCB(CallbackData,prefix="nav"):
     kind: str = "expense"
     mode: str = "today"  # only meaningful for to="add_again" -- see CategoryCB.mode
 
+class ImportCB(CallbackData, prefix="imp"):
+    action: str          # commit | undo_ask | undo
+    id: int = 0          # import_id for undo_ask/undo; the rows to commit live in FSM
+
 class HistoryPageCB(CallbackData, prefix="hpg"):
     page: int
     kind: str | None = None  # None = комбинированная лента | "expense" | "income"
